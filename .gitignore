@@ -1,0 +1,7 @@
+dist/
+share/
+node_modules/
+canton-open-source-*/
+.commit-wip/
+*.log
+.DS_Store

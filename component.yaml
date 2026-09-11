@@ -1,0 +1,7 @@
+apiVersion: digitalasset.com/v1
+kind: Component
+spec:
+  commands:
+    - path: bin/canton-deploy.sh
+      name: canton-deploy
+      desc: "Deploy DARs, run Daml scripts, parties, ACS, and JSON API calls on Canton validators"
