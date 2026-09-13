@@ -1,0 +1,94 @@
+import chalk from 'chalk';
+import ora from 'ora';
+import type { CliFlags } from '../types.js';
+import { loadConfig } from '../config.js';
+import { resolveToken } from '../auth/resolve.js';
+import { UserManagementGrpcClient } from '../grpc/user-management.js';
+import { ensureParties } from '../onboarding.js';
+import { formatGrpcError } from '../grpc/format-error.js';
+
+function padEnd(str: string, len: number): string {
+  return str.length >= len ? str : str + ' '.repeat(len - str.length);
+}
+
+export async function runUsers(flags: CliFlags): Promise<void> {
+  const config = await loadConfig(flags);
+  const { network } = config;
+  const token = await resolveToken(network);
+  const client = new UserManagementGrpcClient(network);
+
+  console.log(chalk.bold('\n  canton-deploy users'));
+  console.log(chalk.gray(`  Ledger API: ${network.host}:${network.ledgerPort}\n`));
+
+  const spinner = ora('Listing users...').start();
+  try {
+    const users = await client.listUsers(token);
+    spinner.succeed(`Found ${users.length} user(s)`);
+
+    if (users.length === 0) {
+      console.log(chalk.gray('\n  No users found.\n'));
+      return;
+    }
+
+    const col1 = Math.max(8, ...users.map((u) => u.id.length)) + 2;
+    console.log('\n  ' + chalk.bold(padEnd('USER ID', col1) + 'PRIMARY PARTY'));
+    console.log('  ' + chalk.gray('─'.repeat(col1 + 40)));
+    for (const u of users) {
+      const deactivated = u.is_deactivated ? chalk.red(' (deactivated)') : '';
+      console.log(
+        `  ${chalk.cyan(padEnd(u.id, col1))}${u.primary_party ?? chalk.gray('—')}${deactivated}`
+      );
+    }
+    console.log();
+  } catch (err) {
+    spinner.fail('Failed to list users');
+    console.error(chalk.red(`  ${formatGrpcError(err)}`));
+    process.exit(1);
+  }
+}
+
+export async function runCreateUser(flags: CliFlags): Promise<void> {
+  const config = await loadConfig(flags);
+  const { network } = config;
+  const token = await resolveToken(network);
+
+  const userId = flags.userId;
+  if (!userId) {
+    console.error(chalk.red('\n  --user-id is required for create-user.\n'));
+    process.exit(1);
+  }
+
+  const spec = network.users.find((u) => u.userId === userId);
+  if (!spec) {
+    console.error(
+      chalk.red(`\n  User "${userId}" not found in canton-deploy.config.js for network "${network.name}".\n`)
+    );
+    console.error(chalk.gray('  Add a users: [{ userId, parties, rights }] entry to the network config.'));
+    process.exit(1);
+  }
+
+  console.log(chalk.bold('\n  canton-deploy create-user'));
+  console.log(chalk.gray(`  User: ${userId}\n`));
+
+  const partyMap = await ensureParties(network, token, spec.parties);
+  const partyIds = spec.parties.map((p) => partyMap.get(p) ?? p);
+
+  const client = new UserManagementGrpcClient(network);
+  const spinner = ora(`Creating user ${userId}...`).start();
+
+  try {
+    const existing = await client.getUser(token, userId);
+    if (existing) {
+      await client.grantRights(token, userId, partyIds, spec.rights);
+      spinner.succeed(chalk.green('User exists; rights granted'));
+    } else {
+      await client.createUserWithRights(token, userId, partyIds, spec.rights);
+      spinner.succeed(chalk.green('User created'));
+    }
+    console.log();
+  } catch (err) {
+    spinner.fail('create-user failed');
+    console.error(chalk.red(`  ${formatGrpcError(err)}`));
+    process.exit(1);
+  }
+}

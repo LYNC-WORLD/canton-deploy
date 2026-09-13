@@ -13,7 +13,6 @@ function resolveCantonVersion(): string {
       const v = raw?.['sdk-version'];
       if (typeof v === 'string' && v.trim()) return v.trim();
     } catch {
-      /* use default */
     }
   }
 
@@ -25,7 +24,7 @@ function resolveCantonVersion(): string {
         const ver = entries[0].replace('canton-open-source-', '');
         return ver;
       }
-    } catch { /* ignore */ }
+    } catch { }
     dir = path.dirname(dir);
   }
 

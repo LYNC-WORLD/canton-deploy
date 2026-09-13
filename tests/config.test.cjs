@@ -2,22 +2,32 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { z } = require('zod');
 
-const NetworkSchema = z.object({
-  host: z.string(),
-  adminPort: z.number().int().positive().optional(),
-  ledgerPort: z.number().int().positive().optional(),
-  httpPort: z.number().int().positive().optional(),
+const UserSchema = z.object({
+  userId: z.string(),
+  parties: z.array(z.string()).default([]),
+  rights: z.array(z.enum(['CanActAs', 'CanReadAs'])).default(['CanActAs', 'CanReadAs']),
 });
 
-test('network schema accepts localnet profile', () => {
+const NetworkSchema = z.object({
+  host: z.string(),
+  vetOnUpload: z.boolean().optional(),
+  additionalDars: z.array(z.string()).default([]),
+  includePackages: z.array(z.string()).default([]),
+  excludePackages: z.array(z.string()).default([]),
+  parties: z.array(z.string()).default([]),
+  users: z.array(UserSchema).default([]),
+});
+
+test('network schema accepts per-network parties and users', () => {
   const parsed = NetworkSchema.parse({
     host: 'localhost',
-    adminPort: 5002,
-    ledgerPort: 5001,
-    httpPort: 7575,
+    parties: ['Alice'],
+    users: [{ userId: 'u1', parties: ['Alice'], rights: ['CanActAs'] }],
+    vetOnUpload: true,
+    additionalDars: ['./vendor/x.dar'],
   });
-  assert.equal(parsed.host, 'localhost');
-  assert.equal(parsed.adminPort, 5002);
+  assert.equal(parsed.parties[0], 'Alice');
+  assert.equal(parsed.users[0].userId, 'u1');
 });
 
 test('network schema has no uploadVia field', () => {

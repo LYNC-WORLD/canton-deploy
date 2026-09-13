@@ -10,9 +10,24 @@ function helpText() {
   return execFileSync('node', [cli, '--help'], { encoding: 'utf8' });
 }
 
-test('CLI lists commit-1 commands', () => {
+test('CLI lists required commands', () => {
   const help = helpText();
-  const required = ['deploy', 'vet-dar', 'dars', 'status', 'token', 'init'];
+  const required = [
+    'deploy',
+    'vet',
+    'vet-dar',
+    'dars',
+    'status',
+    'parties',
+    'allocate-party',
+    'users',
+    'create-user',
+    'run',
+    'contracts',
+    'token',
+    'packages',
+    'init',
+  ];
   for (const cmd of required) {
     assert.match(help, new RegExp(`\\b${cmd}\\b`), `missing command: ${cmd}`);
   }

@@ -37,8 +37,7 @@ export function checkTokenExpiry(token: string): void {
 }
 
 function isLocalNetNetwork(network: ResolvedNetwork): boolean {
-  if (network.name === 'localnet') return true;
-  return network.host === 'localhost' || network.host === '127.0.0.1';
+  return network.name === 'localnet';
 }
 
 export async function resolveToken(network: ResolvedNetwork): Promise<string> {

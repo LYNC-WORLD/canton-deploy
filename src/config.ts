@@ -2,7 +2,13 @@ import { cosmiconfig } from 'cosmiconfig';
 import { z } from 'zod';
 import * as fs from 'fs';
 import chalk from 'chalk';
-import type { CliFlags, ResolvedConfig, ResolvedNetwork } from './types.js';
+import type { CliFlags, ConfigUser, ResolvedConfig, ResolvedNetwork } from './types.js';
+
+const UserSchema = z.object({
+  userId: z.string(),
+  parties: z.array(z.string()).default([]),
+  rights: z.array(z.enum(['CanActAs', 'CanReadAs'])).default(['CanActAs', 'CanReadAs']),
+});
 
 const NetworkSchema = z.object({
   host: z.string(),
@@ -22,6 +28,12 @@ const NetworkSchema = z.object({
   jwtUserId: z.string().optional(),
   jwtAudience: z.string().optional(),
   scriptUserId: z.string().optional(),
+  vetOnUpload: z.boolean().optional(),
+  additionalDars: z.array(z.string()).default([]),
+  includePackages: z.array(z.string()).default([]),
+  excludePackages: z.array(z.string()).default([]),
+  parties: z.array(z.string()).default([]),
+  users: z.array(UserSchema).default([]),
 });
 
 const ConfigSchema = z.object({
@@ -50,11 +62,31 @@ function resolvePortMultiEnv(
   return cantonDefault;
 }
 
+function defaultVetOnUpload(networkName: string, explicit?: boolean): boolean {
+  if (explicit !== undefined) return explicit;
+  return networkName === 'localnet';
+}
+
 const LOCALNET_FALLBACK: RawNetwork = {
   host: 'localhost',
   tls: false,
   httpUseTls: false,
+  vetOnUpload: true,
+  additionalDars: [],
+  includePackages: [],
+  excludePackages: [],
+  parties: [],
+  users: [],
 };
+
+export function resolveVetOnUpload(
+  network: ResolvedNetwork,
+  flags: CliFlags
+): boolean {
+  if (flags.vet) return true;
+  if (flags.noVet) return false;
+  return network.vetOnUpload;
+}
 
 export async function loadConfig(flags: CliFlags): Promise<ResolvedConfig> {
   const explorer = cosmiconfig('canton-deploy');
@@ -135,6 +167,12 @@ export async function loadConfig(flags: CliFlags): Promise<ResolvedConfig> {
     jwtAudience: networkConfig.jwtAudience,
     scriptUserId:
       process.env.CANTON_DEPLOY_SCRIPT_USER_ID?.trim() || networkConfig.scriptUserId,
+    vetOnUpload: defaultVetOnUpload(networkName, networkConfig.vetOnUpload),
+    additionalDars: [...networkConfig.additionalDars],
+    includePackages: [...networkConfig.includePackages],
+    excludePackages: [...networkConfig.excludePackages],
+    parties: [...networkConfig.parties],
+    users: networkConfig.users as ConfigUser[],
   };
 
   if (!resolved.token && resolved.tokenFile) {

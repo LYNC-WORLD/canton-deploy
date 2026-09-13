@@ -1,3 +1,11 @@
+export type UserRight = 'CanActAs' | 'CanReadAs';
+
+export interface ConfigUser {
+  userId: string;
+  parties: string[];
+  rights: UserRight[];
+}
+
 export interface ResolvedNetwork {
   name: string;
   host: string;
@@ -17,10 +25,22 @@ export interface ResolvedNetwork {
   jwtUserId?: string;
   jwtAudience?: string;
   scriptUserId?: string;
+  vetOnUpload: boolean;
+  additionalDars: string[];
+  includePackages: string[];
+  excludePackages: string[];
+  parties: string[];
+  users: ConfigUser[];
 }
 
 export interface ResolvedConfig {
   network: ResolvedNetwork;
+}
+
+export interface DarEntry {
+  path: string;
+  label: string;
+  packageRoot?: string;
 }
 
 export interface CliFlags {
@@ -32,9 +52,23 @@ export interface CliFlags {
   grpcAuthority?: string;
   token?: string;
   network?: string;
-  dar?: string;
+  dar?: string | string[];
   dryRun?: boolean;
+  skipBuild?: boolean;
+  vet?: boolean;
+  noVet?: boolean;
+  script?: string;
+  logFile?: string;
   show?: boolean;
   decode?: boolean;
+  template?: string;
+  party?: string;
+  scriptName?: string;
+  scriptInputFile?: string;
+  partiesFilterPrefix?: string;
+  partiesLimit?: number;
+  partiesPageToken?: string;
+  partiesLookup?: string;
+  userId?: string;
   noSync?: boolean;
 }
