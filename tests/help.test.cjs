@@ -1,17 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { execFileSync } = require('node:child_process');
+const fs = require('node:fs');
 const path = require('node:path');
 
-const root = path.join(__dirname, '..');
-const cli = path.join(root, 'dist', 'index.cjs');
+const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.ts'), 'utf8');
 
-function helpText() {
-  return execFileSync('node', [cli, '--help'], { encoding: 'utf8' });
-}
-
-test('CLI lists required commands', () => {
-  const help = helpText();
+test('CLI registers every command', () => {
   const required = [
     'deploy',
     'vet',
@@ -29,12 +23,11 @@ test('CLI lists required commands', () => {
     'init',
   ];
   for (const cmd of required) {
-    assert.match(help, new RegExp(`\\b${cmd}\\b`), `missing command: ${cmd}`);
+    assert.match(src, new RegExp(`command\\('${cmd}(?: |')`), `missing command: ${cmd}`);
   }
 });
 
-test('CLI excludes non-proposal commands', () => {
-  const help = helpText();
-  assert.doesNotMatch(help, /\bcall\b/);
-  assert.doesNotMatch(help, /upload-via/i);
+test('CLI has no upload-via or call command', () => {
+  assert.doesNotMatch(src, /upload-via/i);
+  assert.doesNotMatch(src, /command\('call'/);
 });

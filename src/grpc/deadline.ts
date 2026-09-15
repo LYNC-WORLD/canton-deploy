@@ -1,21 +1,20 @@
 import * as grpc from '@grpc/grpc-js';
 
-const DEFAULT_MS = (() => {
-  const raw = process.env.CANTON_DEPLOY_GRPC_DEADLINE_MS;
-  if (!raw) return 60_000;
+function envPositiveInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
   const n = parseInt(raw, 10);
-  return !isNaN(n) && n > 0 ? n : 60_000;
-})();
+  return !isNaN(n) && n > 0 ? n : fallback;
+}
+
+const DEFAULT_MS = envPositiveInt('CANTON_DEPLOY_GRPC_DEADLINE_MS', 60_000);
 
 export function grpcDeadline(): grpc.Deadline {
   return new Date(Date.now() + DEFAULT_MS);
 }
 
 export function connectDeadlineMs(): number {
-  const raw = process.env.CANTON_DEPLOY_GRPC_CONNECT_MS;
-  if (!raw) return 180_000;
-  const n = parseInt(raw, 10);
-  return !isNaN(n) && n > 0 ? n : 180_000;
+  return envPositiveInt('CANTON_DEPLOY_GRPC_CONNECT_MS', 180_000);
 }
 
 export function waitForGrpcReady(client: grpc.Client): Promise<void> {
@@ -25,7 +24,7 @@ export function waitForGrpcReady(client: grpc.Client): Promise<void> {
       if (err) {
         reject(
           new Error(
-            `Ledger gRPC did not become ready in ${ms}ms (${err.message}). Check SSH tunnel, host/port, and grpcAuthority.`
+            `gRPC did not become ready in ${ms}ms (${err.message}). Check host, port, and grpcAuthority.`
           )
         );
       } else resolve();

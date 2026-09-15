@@ -4,11 +4,7 @@ import type { CliFlags } from '../types.js';
 import { loadConfig } from '../config.js';
 import { resolveToken } from '../auth/resolve.js';
 import { AdminClient } from '../grpc/admin.js';
-import { formatGrpcError } from '../grpc/format-error.js';
-
-function padEnd(str: string, len: number): string {
-  return str.length >= len ? str : str + ' '.repeat(len - str.length);
-}
+import { failSpinner } from '../utils/cli.js';
 
 export async function runDars(flags: CliFlags): Promise<void> {
   const config = await loadConfig(flags);
@@ -33,9 +29,9 @@ export async function runDars(flags: CliFlags): Promise<void> {
     const col2 = Math.max(10, ...dars.map((d) => (d.name ?? '').length)) + 2;
 
     const header =
-      padEnd('MAIN_PACKAGE', col1) +
-      padEnd('NAME', col2) +
-      padEnd('VERSION', 12) +
+      'MAIN_PACKAGE'.padEnd(col1) +
+      'NAME'.padEnd(col2) +
+      'VERSION'.padEnd(12) +
       'DESCRIPTION';
 
     console.log('\n  ' + chalk.bold(header));
@@ -43,17 +39,14 @@ export async function runDars(flags: CliFlags): Promise<void> {
 
     for (const d of dars) {
       console.log(
-        `  ${chalk.cyan(padEnd(d.main, col1))}` +
-          `${padEnd(d.name ?? '', col2)}` +
-          `${padEnd(d.version ?? '', 12)}` +
+        `  ${chalk.cyan(d.main.padEnd(col1))}` +
+          `${(d.name ?? '').padEnd(col2)}` +
+          `${(d.version ?? '').padEnd(12)}` +
           `${chalk.gray(d.description ?? '')}`
       );
     }
     console.log();
   } catch (err) {
-    spinner.fail('Failed to list DARs');
-    console.error(chalk.red(`  ${formatGrpcError(err)}`));
-    process.exit(1);
+    failSpinner(spinner, 'Failed to list DARs', err);
   }
 }
-

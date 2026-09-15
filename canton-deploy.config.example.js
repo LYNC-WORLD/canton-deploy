@@ -9,9 +9,7 @@ module.exports = {
       httpPort: 7575,
       vetOnUpload: true,
       excludePackages: ['./tests', 'my-app-tests'],
-      additionalDars: [
-        // './vendor/splice-api-token-standard.dar',
-      ],
+      additionalDars: [],
       parties: ['Alice', 'Bob'],
       users: [{
         userId: 'ledger-api-user',
@@ -21,12 +19,12 @@ module.exports = {
     },
 
     devnet: {
-      host: '192.168.50.10',
+      host: 'validator.example.com',
       adminPort: 5002,
       ledgerPort: 5011,
       httpPort: 8080,
       vetOnUpload: true,
-      tokenFile: './.tokens/devnet.jwt',
+      token: process.env.DEVNET_JWT_TOKEN,
       parties: ['Operator'],
       users: [{
         userId: 'app-operator',

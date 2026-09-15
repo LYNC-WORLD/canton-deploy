@@ -7,7 +7,7 @@ import { resolveToken } from '../auth/resolve.js';
 import { runDpmBuild } from '../build.js';
 import { normalizeCliDars, resolveFullDarSet } from '../dar-set.js';
 import { AdminClient, type DarInfo } from '../grpc/admin.js';
-import { formatGrpcError } from '../grpc/format-error.js';
+import { failSpinner } from '../utils/cli.js';
 
 function matchDarToEntry(dars: DarInfo[], label: string): DarInfo | undefined {
   const base = label.replace(/\.dar$/i, '');
@@ -76,9 +76,7 @@ export async function runVet(flags: CliFlags): Promise<void> {
       });
       spinner.succeed(chalk.green(`Vetted ${entry.label}`) + chalk.gray(` (${mainId.slice(0, 16)}…)`));
     } catch (err) {
-      spinner.fail(`Vet failed: ${entry.label}`);
-      console.error(chalk.red(`  ${formatGrpcError(err)}`));
-      process.exit(1);
+      failSpinner(spinner, `Vet failed: ${entry.label}`, err);
     }
   }
 

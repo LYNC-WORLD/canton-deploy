@@ -4,7 +4,29 @@ import type { ResolvedNetwork } from './types.js';
 import { LedgerClient } from './grpc/ledger.js';
 import { UserManagementGrpcClient } from './grpc/user-management.js';
 import { displayNameToHint } from './utils/party-hint.js';
-import { formatGrpcError } from './grpc/format-error.js';
+import { failSpinner } from './utils/cli.js';
+
+export async function resolveParty(
+  client: LedgerClient,
+  token: string,
+  displayName: string
+): Promise<{ partyId: string; isLocal: boolean; created: boolean }> {
+  if (displayName.includes('::')) {
+    const parties = await client.getParties(token, [displayName]);
+    const match = parties.find((p) => p.party === displayName);
+    if (!match) {
+      throw new Error(`Party id not known on this participant: ${displayName}`);
+    }
+    return { partyId: match.party, isLocal: match.is_local, created: false };
+  }
+
+  const hint = displayNameToHint(displayName);
+  const existing = await client.listKnownParties(token, { filterParty: hint, maxParties: 20 });
+  const match = existing.parties.find((p) => p.party.startsWith(hint + '::') || p.party === hint);
+  if (match) return { partyId: match.party, isLocal: match.is_local, created: false };
+  const details = await client.allocateParty(hint, token);
+  return { partyId: details.party, isLocal: details.is_local, created: true };
+}
 
 export async function ensureParties(
   network: ResolvedNetwork,
@@ -12,36 +34,18 @@ export async function ensureParties(
   displayNames: string[]
 ): Promise<Map<string, string>> {
   const client = new LedgerClient(network);
-  const hintToParty = new Map<string, string>();
   const displayToParty = new Map<string, string>();
 
-  if (displayNames.length === 0) return displayToParty;
-
-  const existing = await client.listKnownParties(token);
-  for (const p of existing.parties) {
-    hintToParty.set(p.party.split('::')[0] ?? p.party, p.party);
-  }
-
   for (const displayName of displayNames) {
-    const hint = displayNameToHint(displayName);
     const spinner = ora(`Party: ${displayName}`).start();
-
-    const existingParty = hintToParty.get(hint);
-    if (existingParty) {
-      spinner.succeed(chalk.green(`Party exists: `) + chalk.cyan(existingParty));
-      displayToParty.set(displayName, existingParty);
-      continue;
-    }
-
     try {
-      const details = await client.allocateParty(hint, token);
-      spinner.succeed(chalk.green(`Party allocated: `) + chalk.cyan(details.party));
-      displayToParty.set(displayName, details.party);
-      hintToParty.set(hint, details.party);
+      const { partyId, created } = await resolveParty(client, token, displayName);
+      spinner.succeed(
+        chalk.green(created ? `Party allocated: ` : `Party exists: `) + chalk.cyan(partyId)
+      );
+      displayToParty.set(displayName, partyId);
     } catch (err) {
-      spinner.fail(`Party "${displayName}" allocation failed`);
-      console.error(chalk.red(`  ${formatGrpcError(err)}`));
-      process.exit(1);
+      failSpinner(spinner, `Party "${displayName}" allocation failed`, err);
     }
   }
 
@@ -62,18 +66,13 @@ export async function ensureUsers(
     const partyIds = spec.parties.map((p) => partyMap.get(p) ?? p);
 
     try {
-      const existing = await client.getUser(token, spec.userId);
-      if (existing) {
-        await client.grantRights(token, spec.userId, partyIds, spec.rights);
-        spinner.succeed(chalk.green(`User exists, rights granted: `) + chalk.cyan(spec.userId));
-      } else {
-        await client.createUserWithRights(token, spec.userId, partyIds, spec.rights);
-        spinner.succeed(chalk.green(`User created: `) + chalk.cyan(spec.userId));
-      }
+      const action = await client.ensureUserWithRights(token, spec.userId, partyIds, spec.rights);
+      spinner.succeed(
+        chalk.green(action === 'created' ? `User created: ` : `User exists, rights granted: `) +
+          chalk.cyan(spec.userId)
+      );
     } catch (err) {
-      spinner.fail(`User "${spec.userId}" setup failed`);
-      console.error(chalk.red(`  ${formatGrpcError(err)}`));
-      process.exit(1);
+      failSpinner(spinner, `User "${spec.userId}" setup failed`, err);
     }
   }
 }

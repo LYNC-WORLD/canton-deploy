@@ -90,7 +90,11 @@ export async function runDeploy(flags: CliFlags): Promise<void> {
     }
   }
 
-  const partyMap = await ensureParties(network, token, network.parties);
+  const partyNames = [
+    ...network.parties,
+    ...network.users.flatMap((u) => u.parties),
+  ].filter((name, i, arr) => arr.indexOf(name) === i);
+  const partyMap = await ensureParties(network, token, partyNames);
   await ensureUsers(network, token, partyMap);
 
   if (flags.script) {

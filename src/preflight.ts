@@ -3,7 +3,7 @@ import ora from 'ora';
 import type { ResolvedNetwork } from './types.js';
 import { AdminClient } from './grpc/admin.js';
 import { LedgerClient } from './grpc/ledger.js';
-import { jsonApiBaseUrl } from './json-api.js';
+import { jsonApiDisplayUrl, jsonApiFetch } from './json-api.js';
 import { formatGrpcError } from './grpc/format-error.js';
 import { withRetry } from './utils/retry.js';
 
@@ -25,14 +25,15 @@ export async function runPreflight(network: ResolvedNetwork, token: string): Pro
   }
 
   try {
-    const baseUrl = jsonApiBaseUrl(network);
     const res = await withRetry(() =>
-      fetch(`${baseUrl}/v2/state/ledger-end`, {
+      jsonApiFetch(network, '/v2/state/ledger-end', {
         headers: { Authorization: `Bearer ${token}` },
       })
     );
     if (!res.ok) {
-      warnings.push(`JSON API: HTTP ${res.status} ${res.statusText} (${baseUrl})`);
+      warnings.push(
+        `JSON API: HTTP ${res.status} ${res.statusText} (${jsonApiDisplayUrl(network)})`
+      );
     }
   } catch (err) {
     warnings.push(`JSON API: ${(err as Error).message}`);

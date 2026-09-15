@@ -5,11 +5,7 @@ import { loadConfig } from '../config.js';
 import { resolveToken } from '../auth/resolve.js';
 import { UserManagementGrpcClient } from '../grpc/user-management.js';
 import { ensureParties } from '../onboarding.js';
-import { formatGrpcError } from '../grpc/format-error.js';
-
-function padEnd(str: string, len: number): string {
-  return str.length >= len ? str : str + ' '.repeat(len - str.length);
-}
+import { failSpinner } from '../utils/cli.js';
 
 export async function runUsers(flags: CliFlags): Promise<void> {
   const config = await loadConfig(flags);
@@ -31,19 +27,17 @@ export async function runUsers(flags: CliFlags): Promise<void> {
     }
 
     const col1 = Math.max(8, ...users.map((u) => u.id.length)) + 2;
-    console.log('\n  ' + chalk.bold(padEnd('USER ID', col1) + 'PRIMARY PARTY'));
+    console.log('\n  ' + chalk.bold('USER ID'.padEnd(col1) + 'PRIMARY PARTY'));
     console.log('  ' + chalk.gray('─'.repeat(col1 + 40)));
     for (const u of users) {
       const deactivated = u.is_deactivated ? chalk.red(' (deactivated)') : '';
       console.log(
-        `  ${chalk.cyan(padEnd(u.id, col1))}${u.primary_party ?? chalk.gray('—')}${deactivated}`
+        `  ${chalk.cyan(u.id.padEnd(col1))}${u.primary_party ?? chalk.gray('—')}${deactivated}`
       );
     }
     console.log();
   } catch (err) {
-    spinner.fail('Failed to list users');
-    console.error(chalk.red(`  ${formatGrpcError(err)}`));
-    process.exit(1);
+    failSpinner(spinner, 'Failed to list users', err);
   }
 }
 
@@ -77,18 +71,10 @@ export async function runCreateUser(flags: CliFlags): Promise<void> {
   const spinner = ora(`Creating user ${userId}...`).start();
 
   try {
-    const existing = await client.getUser(token, userId);
-    if (existing) {
-      await client.grantRights(token, userId, partyIds, spec.rights);
-      spinner.succeed(chalk.green('User exists; rights granted'));
-    } else {
-      await client.createUserWithRights(token, userId, partyIds, spec.rights);
-      spinner.succeed(chalk.green('User created'));
-    }
+    const action = await client.ensureUserWithRights(token, userId, partyIds, spec.rights);
+    spinner.succeed(chalk.green(action === 'created' ? 'User created' : 'User exists; rights granted'));
     console.log();
   } catch (err) {
-    spinner.fail('create-user failed');
-    console.error(chalk.red(`  ${formatGrpcError(err)}`));
-    process.exit(1);
+    failSpinner(spinner, 'create-user failed', err);
   }
 }

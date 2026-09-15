@@ -3,7 +3,7 @@ import ora from 'ora';
 import type { CliFlags } from '../types.js';
 import { loadConfig } from '../config.js';
 import { resolveToken } from '../auth/resolve.js';
-import { jsonApiBaseUrl } from '../json-api.js';
+import { jsonApiDisplayUrl, jsonApiFetch } from '../json-api.js';
 
 interface ActiveContract {
   contractEntry?: {
@@ -23,14 +23,12 @@ export async function runContracts(flags: CliFlags): Promise<void> {
   const { network } = config;
   const token = await resolveToken(network);
 
-  const baseUrl = jsonApiBaseUrl(network);
-
   console.log(chalk.bold('\n  canton-deploy contracts'));
-  console.log(chalk.gray(`  Querying ${baseUrl}/v2/state/active-contracts`));
+  console.log(chalk.gray(`  Querying ${jsonApiDisplayUrl(network)}/v2/state/active-contracts`));
   if (network.httpHost && network.httpHost !== network.host) {
     console.log(
       chalk.gray(
-        `  (nginx vhost ${network.httpHost} — ensure it resolves, e.g. /etc/hosts: 127.0.0.1 ${network.httpHost})\n`
+        `  (TCP ${network.host}:${network.httpPort}, Host ${network.httpHost})\n`
       )
     );
   } else {
@@ -39,7 +37,7 @@ export async function runContracts(flags: CliFlags): Promise<void> {
 
   let activeAtOffset: number;
   try {
-    const endRes = await fetch(`${baseUrl}/v2/state/ledger-end`, {
+    const endRes = await jsonApiFetch(network, '/v2/state/ledger-end', {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!endRes.ok) {
@@ -128,7 +126,7 @@ export async function runContracts(flags: CliFlags): Promise<void> {
 
   let contracts: ActiveContract[] = [];
   try {
-    const res = await fetch(`${baseUrl}/v2/state/active-contracts`, {
+    const res = await jsonApiFetch(network, '/v2/state/active-contracts', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -141,10 +139,29 @@ export async function runContracts(flags: CliFlags): Promise<void> {
       const text = await res.text();
       spinner.fail(`HTTP ${res.status}: ${res.statusText}`);
       console.error(chalk.red(`  ${text}`));
+      if (res.status === 403) {
+        console.error(
+          chalk.yellow(
+            '  Hint: JWT user needs CanReadAs for this party. Add users[] in config, then:\n' +
+              `    canton-deploy create-user --user-id <jwt-sub> --network ${network.name}\n` +
+              '  (or run deploy so onboarding grants rights)\n'
+          )
+        );
+      }
       if (res.status === 400 && flags.template && !flags.template.startsWith('#')) {
         console.error(
           chalk.yellow(
-            '  Hint: template id may need package prefix, e.g. --template "#intro-contracts:Token:Token"'
+            '  Hint: template id may need a package-name prefix, e.g. --template "#<package-name>:Module:Template"'
+          )
+        );
+      }
+      if (
+        flags.template &&
+        (text.includes('PACKAGE_NAMES_NOT_FOUND') || text.includes('package names do not match'))
+      ) {
+        console.error(
+          chalk.yellow(
+            '  Hint: # prefix is the package name from daml.yaml (#<package-name>:Module:Template), not the hex package id from deploy.'
           )
         );
       }
@@ -167,7 +184,7 @@ export async function runContracts(flags: CliFlags): Promise<void> {
     if (flags.template && !flags.template.startsWith('#')) {
       console.log(
         chalk.gray(
-          '  Try full template id: --template "#intro-contracts:Token:Token" (package name from daml.yaml)'
+          '  Try --template "#<package-name>:Module:Template" (package name from daml.yaml)'
         )
       );
     }

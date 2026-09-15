@@ -7,7 +7,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/*.cjs"
+    "test": "node --test tests/*.test.cjs"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.12.0",
