@@ -5,7 +5,7 @@ import { loadConfig } from '../config.js';
 import { resolveToken } from '../auth/resolve.js';
 import { AdminClient } from '../grpc/admin.js';
 import { LedgerClient } from '../grpc/ledger.js';
-import { jsonApiBaseUrl } from '../json-api.js';
+import { jsonApiDisplayUrl, jsonApiFetch } from '../json-api.js';
 import { formatGrpcError } from '../grpc/format-error.js';
 
 function tick(ok: boolean): string {
@@ -58,13 +58,13 @@ export async function runStatus(flags: CliFlags): Promise<void> {
     ledgerSpinner.fail(chalk.red(`Ledger API unreachable: ${formatGrpcError(err)}`));
   }
 
-  const jsonSpinner = ora(`JSON API (${jsonApiBaseUrl(network)})...`).start();
+  const jsonSpinner = ora(`JSON API (${jsonApiDisplayUrl(network)})...`).start();
   let jsonOk = false;
   let jsonMs = 0;
 
   try {
     const t0 = Date.now();
-    const res = await fetch(`${jsonApiBaseUrl(network)}/v2/state/ledger-end`, {
+    const res = await jsonApiFetch(network, '/v2/state/ledger-end', {
       headers: { Authorization: `Bearer ${token}` },
     });
     jsonMs = Date.now() - t0;
@@ -82,7 +82,7 @@ export async function runStatus(flags: CliFlags): Promise<void> {
   console.log(chalk.gray('  ─────────────────────────────────────'));
   console.log(`  ${tick(adminOk)} Admin API   ${network.host}:${network.adminPort}   ${adminMs ? `${adminMs}ms` : ''}`);
   console.log(`  ${tick(ledgerOk)} Ledger API  ${network.host}:${network.ledgerPort}  ${ledgerMs ? `${ledgerMs}ms` : ''}`);
-  console.log(`  ${tick(jsonOk)} JSON API    ${jsonApiBaseUrl(network)}  ${jsonMs ? `${jsonMs}ms` : ''}`);
+  console.log(`  ${tick(jsonOk)} JSON API    ${jsonApiDisplayUrl(network)}  ${jsonMs ? `${jsonMs}ms` : ''}`);
 
   if (ledgerVersion) {
     console.log(`  ${chalk.gray('Ledger version:')} ${ledgerVersion}`);

@@ -3,19 +3,15 @@ import ora from 'ora';
 import type { CliFlags } from '../types.js';
 import { loadConfig } from '../config.js';
 import { resolveToken } from '../auth/resolve.js';
-import { PackageManagementGrpcClient } from '../grpc/package-management.js';
-import { formatGrpcError } from '../grpc/format-error.js';
-
-function padEnd(str: string, len: number): string {
-  return str.length >= len ? str : str + ' '.repeat(len - str.length);
-}
+import { LedgerClient } from '../grpc/ledger.js';
+import { failSpinner } from '../utils/cli.js';
 
 export async function runPackages(flags: CliFlags): Promise<void> {
   const config = await loadConfig(flags);
   const { network } = config;
   const token = await resolveToken(network);
 
-  const client = new PackageManagementGrpcClient(network);
+  const client = new LedgerClient(network);
 
   console.log(chalk.bold('\n  canton-deploy packages'));
   console.log(chalk.gray(`  Ledger API: ${network.host}:${network.ledgerPort}${network.grpcAuthority ? ` (authority: ${network.grpcAuthority})` : ''}\n`));
@@ -36,7 +32,7 @@ export async function runPackages(flags: CliFlags): Promise<void> {
     const col2 = Math.max(8, ...pkgs.map((p) => (p.version ?? '').length)) + 2;
     const col3 = 66;
 
-    const header = padEnd('NAME', col1) + padEnd('VERSION', col2) + 'PACKAGE_ID';
+    const header = 'NAME'.padEnd(col1) + 'VERSION'.padEnd(col2) + 'PACKAGE_ID';
     console.log('\n  ' + chalk.bold(header));
     console.log('  ' + chalk.gray('─'.repeat(header.length)));
     for (const p of pkgs) {
@@ -44,16 +40,13 @@ export async function runPackages(flags: CliFlags): Promise<void> {
       const version = p.version ?? '';
       const id = p.package_id ?? '';
       console.log(
-        `  ${padEnd(name, col1)}` +
-          `${padEnd(version, col2)}` +
+        `  ${name.padEnd(col1)}` +
+          `${version.padEnd(col2)}` +
           `${chalk.cyan(id.slice(0, col3))}`
       );
     }
     console.log();
   } catch (err) {
-    spinner.fail('Failed to list known packages');
-    console.error(chalk.red(`  ${formatGrpcError(err)}`));
-    process.exit(1);
+    failSpinner(spinner, 'Failed to list known packages', err);
   }
 }
-

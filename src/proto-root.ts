@@ -28,7 +28,13 @@ function resolveCantonVersion(): string {
     dir = path.dirname(dir);
   }
 
-  return '3.5.1-rc5';
+  return '3.5.17';
+}
+
+function isProtoTree(dir: string): boolean {
+  return (
+    fs.existsSync(path.join(dir, 'admin-api')) && fs.existsSync(path.join(dir, 'ledger-api'))
+  );
 }
 
 function findCantonProtoRoot(): string {
@@ -40,28 +46,27 @@ function findCantonProtoRoot(): string {
     );
   }
 
+  let dir = __dirname;
+  for (let i = 0; i < 6; i++) {
+    const bundled = path.join(dir, 'share', 'protobuf');
+    if (isProtoTree(bundled)) return bundled;
+    dir = path.dirname(dir);
+  }
+
   const version = resolveCantonVersion();
   const dirName = `canton-open-source-${version}`;
 
-  let dir = __dirname;
+  dir = __dirname;
   for (let i = 0; i < 6; i++) {
     const candidate = path.join(dir, dirName, 'protobuf');
-    if (fs.existsSync(candidate)) return candidate;
+    if (isProtoTree(candidate)) return candidate;
     dir = path.dirname(dir);
   }
 
   throw new Error(
-    `Could not locate ${dirName}/protobuf/\n\n` +
-    `  Canton SDK version resolved as: ${version}\n` +
-    `  (from daml.yaml sdk-version, CANTON_SDK_VERSION env, or auto-detection)\n\n` +
-    `  DPM users: install the canton-deploy component (protos are bundled; do not download manually).\n\n` +
-    `  Maintainers — Option A: extract the protobuf bundle next to your project:\n` +
-    `    curl -L https://github.com/digital-asset/canton/releases/download/v${version}/canton-open-source-${version}-protobuf.tar.gz | tar xz\n\n` +
-    `  Option B — Set CANTON_PROTO_PATH to an existing protobuf/ directory:\n` +
-    `    export CANTON_PROTO_PATH=/path/to/canton-open-source-${version}/protobuf\n\n` +
-    `  Option C — Override the SDK version:\n` +
-    `    export CANTON_SDK_VERSION=<your-node-version>\n` +
-    `    then use Option A or B.\n`
+    `Could not locate Canton protobufs (tried share/protobuf and ${dirName}/protobuf).\n\n` +
+    `  Set CANTON_PROTO_PATH to a directory containing admin-api/ and ledger-api/,\n` +
+    `  or run: bash scripts/fetch-canton-protobuf.sh ${version}\n`
   );
 }
 

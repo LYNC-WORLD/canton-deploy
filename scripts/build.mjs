@@ -7,7 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const componentRoot = path.join(__dirname, '..');
 const entry = path.join(componentRoot, 'src', 'index.ts');
 const cantonOpenSourceVersion =
-  process.env.CANTON_OPEN_SOURCE_VERSION?.trim() || '3.5.1-rc5';
+  process.env.CANTON_OPEN_SOURCE_VERSION?.trim() || '3.5.17';
 const protoCandidates = [
   path.join(componentRoot, `canton-open-source-${cantonOpenSourceVersion}`, 'protobuf'),
   path.join(componentRoot, '..', `canton-open-source-${cantonOpenSourceVersion}`, 'protobuf'),

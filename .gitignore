@@ -5,3 +5,5 @@ canton-open-source-*/
 .commit-wip/
 *.log
 .DS_Store
+canton-deploy.config.js
+.tokens/

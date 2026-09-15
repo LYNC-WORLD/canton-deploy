@@ -1,42 +1,10 @@
 import * as grpc from '@grpc/grpc-js';
-import * as protoLoader from '@grpc/proto-loader';
-import * as path from 'path';
-import * as fs from 'fs';
 import type { ResolvedNetwork, UserRight } from '../types.js';
-import { ledgerProtoPath, getProtoRoot } from '../proto-root.js';
+import { loadLedgerProto } from './proto-load.js';
 import { grpcDeadline, waitForGrpcReady } from './deadline.js';
+import { buildCredentials, buildMetadata, ledgerChannelOptions } from './channel.js';
+import { unaryCall, promisifyUnary } from './unary.js';
 import { withRetry } from '../utils/retry.js';
-
-function loadLedgerProto(protoFile: string) {
-  const protoPath = ledgerProtoPath(protoFile);
-  const pkgDef = protoLoader.loadSync(protoPath, {
-    keepCase: true,
-    longs: String,
-    enums: String,
-    defaults: true,
-    oneofs: true,
-    includeDirs: [
-      path.join(getProtoRoot(), 'ledger-api'),
-      path.join(getProtoRoot(), 'admin-api'),
-    ],
-  });
-  return grpc.loadPackageDefinition(pkgDef);
-}
-
-function buildCredentials(network: ResolvedNetwork): grpc.ChannelCredentials {
-  if (!network.tls) return grpc.credentials.createInsecure();
-  if (network.tlsCertFile) {
-    const cert = fs.readFileSync(network.tlsCertFile);
-    return grpc.credentials.createSsl(cert);
-  }
-  return grpc.credentials.createSsl();
-}
-
-function buildMetadata(token: string): grpc.Metadata {
-  const meta = new grpc.Metadata();
-  meta.set('authorization', `Bearer ${token}`);
-  return meta;
-}
 
 interface UserManagementServiceClient extends grpc.Client {
   CreateUser(
@@ -80,6 +48,10 @@ function rightsToProto(rights: UserRight[], partyId: string): Record<string, unk
   return out;
 }
 
+function buildProtoRights(partyIds: string[], rights: UserRight[]): Record<string, unknown>[] {
+  return partyIds.flatMap((id) => rightsToProto(rights, id));
+}
+
 export class UserManagementGrpcClient {
   private readonly address: string;
   private readonly creds: grpc.ChannelCredentials;
@@ -88,14 +60,7 @@ export class UserManagementGrpcClient {
   constructor(network: ResolvedNetwork) {
     this.address = `${network.host}:${network.ledgerPort}`;
     this.creds = buildCredentials(network);
-    const opts: grpc.ChannelOptions = {
-      'grpc.keepalive_time_ms': 10_000,
-      'grpc.keepalive_timeout_ms': 5_000,
-    };
-    if (network.grpcAuthority) {
-      (opts as Record<string, unknown>)['grpc.default_authority'] = network.grpcAuthority;
-    }
-    this.channelOptions = opts;
+    this.channelOptions = ledgerChannelOptions(network);
   }
 
   private makeClient(): UserManagementServiceClient {
@@ -121,26 +86,13 @@ export class UserManagementGrpcClient {
           const req: Record<string, unknown> = { page_size: 100 };
           if (pageToken) req.page_token = pageToken;
 
-          const { users, next } = await new Promise<{
-            users: LedgerUser[];
-            next: string;
-          }>((resolve, reject) => {
-            client.ListUsers(
-              req,
-              meta,
-              { deadline: grpcDeadline() },
-              (err: grpc.ServiceError | null, response: unknown) => {
-                if (err) reject(err);
-                else {
-                  const res = response as { users?: LedgerUser[]; next_page_token?: string };
-                  resolve({
-                    users: res.users ?? [],
-                    next: res.next_page_token ?? '',
-                  });
-                }
-              }
-            );
-          });
+          const { users, next } = await promisifyUnary<{ users: LedgerUser[]; next: string }>(
+            (cb) => client.ListUsers(req, meta, { deadline: grpcDeadline() }, cb),
+            (response) => {
+              const res = response as { users?: LedgerUser[]; next_page_token?: string };
+              return { users: res.users ?? [], next: res.next_page_token ?? '' };
+            }
+          );
 
           all.push(...users);
           if (!next) break;
@@ -155,32 +107,18 @@ export class UserManagementGrpcClient {
   }
 
   async getUser(token: string, userId: string): Promise<LedgerUser | null> {
-    return withRetry(async () => {
-      const client = this.makeClient();
-      const meta = buildMetadata(token);
-
-      try {
-        await waitForGrpcReady(client);
-        return await new Promise<LedgerUser | null>((resolve, reject) => {
-          client.GetUser(
-            { user_id: userId },
-            meta,
-            { deadline: grpcDeadline() },
-            (err: grpc.ServiceError | null, response: unknown) => {
-              if (err) {
-                if (err.code === grpc.status.NOT_FOUND) resolve(null);
-                else reject(err);
-              } else {
-                const res = response as { user?: LedgerUser };
-                resolve(res.user ?? null);
-              }
-            }
-          );
+    return unaryCall(this.makeClient.bind(this), token, (client, meta, deadline) =>
+      new Promise<LedgerUser | null>((resolve, reject) => {
+        client.GetUser({ user_id: userId }, meta, { deadline }, (err, response) => {
+          if (err) {
+            if (err.code === grpc.status.NOT_FOUND) resolve(null);
+            else reject(err);
+          } else {
+            resolve((response as { user?: LedgerUser }).user ?? null);
+          }
         });
-      } finally {
-        client.close();
-      }
-    });
+      })
+    );
   }
 
   async createUserWithRights(
@@ -189,39 +127,18 @@ export class UserManagementGrpcClient {
     partyIds: string[],
     rights: UserRight[]
   ): Promise<LedgerUser> {
-    const protoRights: Record<string, unknown>[] = [];
-    for (const partyId of partyIds) {
-      protoRights.push(...rightsToProto(rights, partyId));
-    }
-
-    return withRetry(async () => {
-      const client = this.makeClient();
-      const meta = buildMetadata(token);
-
-      try {
-        await waitForGrpcReady(client);
-        return await new Promise<LedgerUser>((resolve, reject) => {
-          client.CreateUser(
-            {
-              user: { id: userId },
-              rights: protoRights,
-            },
-            meta,
-            { deadline: grpcDeadline() },
-            (err: grpc.ServiceError | null, response: unknown) => {
-              if (err) reject(err);
-              else {
-                const res = response as { user?: LedgerUser };
-                if (!res.user) reject(new Error('CreateUser returned no user'));
-                else resolve(res.user);
-              }
-            }
-          );
-        });
-      } finally {
-        client.close();
-      }
-    });
+    const protoRights = buildProtoRights(partyIds, rights);
+    return unaryCall(this.makeClient.bind(this), token, (client, meta, deadline) =>
+      promisifyUnary(
+        (cb) =>
+          client.CreateUser({ user: { id: userId }, rights: protoRights }, meta, { deadline }, cb),
+        (r) => {
+          const user = (r as { user?: LedgerUser }).user;
+          if (!user) throw new Error('CreateUser returned no user');
+          return user;
+        }
+      )
+    );
   }
 
   async grantRights(
@@ -230,31 +147,27 @@ export class UserManagementGrpcClient {
     partyIds: string[],
     rights: UserRight[]
   ): Promise<void> {
-    const protoRights: Record<string, unknown>[] = [];
-    for (const partyId of partyIds) {
-      protoRights.push(...rightsToProto(rights, partyId));
+    const protoRights = buildProtoRights(partyIds, rights);
+    return unaryCall(this.makeClient.bind(this), token, (client, meta, deadline) =>
+      promisifyUnary(
+        (cb) => client.GrantUserRights({ user_id: userId, rights: protoRights }, meta, { deadline }, cb),
+        () => undefined
+      )
+    );
+  }
+
+  async ensureUserWithRights(
+    token: string,
+    userId: string,
+    partyIds: string[],
+    rights: UserRight[]
+  ): Promise<'created' | 'granted'> {
+    const existing = await this.getUser(token, userId);
+    if (existing) {
+      await this.grantRights(token, userId, partyIds, rights);
+      return 'granted';
     }
-
-    return withRetry(async () => {
-      const client = this.makeClient();
-      const meta = buildMetadata(token);
-
-      try {
-        await waitForGrpcReady(client);
-        await new Promise<void>((resolve, reject) => {
-          client.GrantUserRights(
-            { user_id: userId, rights: protoRights },
-            meta,
-            { deadline: grpcDeadline() },
-            (err: grpc.ServiceError | null) => {
-              if (err) reject(err);
-              else resolve();
-            }
-          );
-        });
-      } finally {
-        client.close();
-      }
-    });
+    await this.createUserWithRights(token, userId, partyIds, rights);
+    return 'created';
   }
 }

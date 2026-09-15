@@ -1,8 +1,29 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { cosmiconfig } from 'cosmiconfig';
 import { z } from 'zod';
-import * as fs from 'fs';
 import chalk from 'chalk';
 import type { CliFlags, ConfigUser, ResolvedConfig, ResolvedNetwork } from './types.js';
+
+const CONFIG_FILENAMES = [
+  'canton-deploy.config.js',
+  'canton-deploy.config.cjs',
+  'canton-deploy.config.mjs',
+] as const;
+
+export function findConfigPathUpwards(startDir: string = process.cwd()): string | undefined {
+  let dir = path.resolve(startDir);
+  for (let i = 0; i < 32; i++) {
+    for (const name of CONFIG_FILENAMES) {
+      const fp = path.join(dir, name);
+      if (fs.existsSync(fp)) return fp;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return undefined;
+}
 
 const UserSchema = z.object({
   userId: z.string(),
@@ -90,7 +111,15 @@ export function resolveVetOnUpload(
 
 export async function loadConfig(flags: CliFlags): Promise<ResolvedConfig> {
   const explorer = cosmiconfig('canton-deploy');
-  const result = await explorer.search();
+  let result = await explorer.search();
+
+  if (!result?.config) {
+    const envPath = process.env.CANTON_DEPLOY_CONFIG?.trim();
+    const configPath = envPath ? path.resolve(envPath) : findConfigPathUpwards();
+    if (configPath) {
+      result = await explorer.load(configPath);
+    }
+  }
 
   let raw: RawConfig = {
     defaultNetwork: 'localnet',
@@ -174,15 +203,6 @@ export async function loadConfig(flags: CliFlags): Promise<ResolvedConfig> {
     parties: [...networkConfig.parties],
     users: networkConfig.users as ConfigUser[],
   };
-
-  if (!resolved.token && resolved.tokenFile) {
-    try {
-      resolved.token = fs.readFileSync(resolved.tokenFile, 'utf8').trim();
-    } catch {
-      console.error(chalk.red(`Cannot read tokenFile: ${resolved.tokenFile}`));
-      process.exit(1);
-    }
-  }
 
   return { network: resolved };
 }

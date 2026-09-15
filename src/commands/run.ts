@@ -1,12 +1,54 @@
 import * as fs from 'fs';
+import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
 import chalk from 'chalk';
 import { execa } from 'execa';
-import type { CliFlags } from '../types.js';
+import type { CliFlags, ResolvedNetwork } from '../types.js';
 import { loadConfig } from '../config.js';
-import { resolveToken } from '../auth/resolve.js';
+import { resolveToken, decodeJwtPayload } from '../auth/resolve.js';
 import { resolveFullDarSet, normalizeCliDars } from '../dar-set.js';
+
+function canTcpConnect(host: string, port: number, timeoutMs = 2000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host, port });
+    const done = (ok: boolean) => {
+      socket.removeAllListeners();
+      socket.destroy();
+      resolve(ok);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => done(true));
+    socket.once('timeout', () => done(false));
+    socket.once('error', () => done(false));
+  });
+}
+
+async function resolveScriptLedgerHost(
+  network: ResolvedNetwork
+): Promise<{ host: string; via: string }> {
+  const authority = network.grpcAuthority?.trim();
+  if (!authority || authority === network.host) {
+    return { host: network.host, via: 'host' };
+  }
+
+  if (await canTcpConnect(authority, network.ledgerPort)) {
+    return { host: authority, via: 'grpcAuthority' };
+  }
+
+  console.error(
+    chalk.red(`\n  Cannot reach ${authority}:${network.ledgerPort} (grpcAuthority).\n`)
+  );
+  console.error(
+    chalk.yellow(
+      '  dpm script uses --ledger-host for both the TCP connection and gRPC :authority.\n' +
+        `  Config: host=${network.host}  grpcAuthority=${authority}  port=${network.ledgerPort}\n\n` +
+        `  ${authority} must resolve and accept connections on port ${network.ledgerPort},\n` +
+        '  or set host and grpcAuthority to the same reachable name.\n'
+    )
+  );
+  process.exit(1);
+}
 
 export async function runScript(flags: CliFlags & { scriptName?: string }): Promise<void> {
   const scriptName = flags.scriptName ?? flags.script;
@@ -33,10 +75,10 @@ export async function runScript(flags: CliFlags & { scriptName?: string }): Prom
     process.exit(1);
   }
 
+  const { host: ledgerHost, via } = await resolveScriptLedgerHost(network);
+
   const tmpTokenFile = path.join(os.tmpdir(), `canton-deploy-token-${Date.now()}.jwt`);
   fs.writeFileSync(tmpTokenFile, token, { mode: 0o600 });
-
-  const ledgerHost = network.grpcAuthority ?? network.host;
 
   const args = [
     'script',
@@ -47,9 +89,9 @@ export async function runScript(flags: CliFlags & { scriptName?: string }): Prom
     '--access-token-file', tmpTokenFile,
   ];
 
-  if (network.scriptUserId) {
-    args.push('--user-id', network.scriptUserId);
-  }
+  const userId =
+    network.scriptUserId?.trim() || decodeJwtPayload(token)?.sub?.trim() || undefined;
+  if (userId) args.push('--user-id', userId);
 
   if (flags.scriptInputFile) {
     args.push('--input-file', path.resolve(flags.scriptInputFile));
@@ -59,7 +101,12 @@ export async function runScript(flags: CliFlags & { scriptName?: string }): Prom
 
   console.log(chalk.bold(`\n  canton-deploy run`));
   console.log(chalk.gray(`  Script: ${scriptName}`));
-  console.log(chalk.gray(`  Host:   ${ledgerHost}:${network.ledgerPort}`));
+  console.log(
+    chalk.gray(
+      `  Host:   ${ledgerHost}:${network.ledgerPort}` +
+        (via === 'grpcAuthority' ? ' (grpcAuthority)' : '')
+    )
+  );
   console.log(chalk.gray(`  DAR:    ${darPath}\n`));
 
   try {
@@ -70,6 +117,10 @@ export async function runScript(flags: CliFlags & { scriptName?: string }): Prom
     console.error(chalk.gray(`  ${(err as Error).message}`));
     process.exit(1);
   } finally {
-    try { fs.unlinkSync(tmpTokenFile); } catch { }
+    try {
+      fs.unlinkSync(tmpTokenFile);
+    } catch {
+      /* ignore */
+    }
   }
 }

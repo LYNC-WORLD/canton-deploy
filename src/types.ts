@@ -69,6 +69,7 @@ export interface CliFlags {
   partiesLimit?: number;
   partiesPageToken?: string;
   partiesLookup?: string;
+  partiesLocalOnly?: boolean;
   userId?: string;
   noSync?: boolean;
 }

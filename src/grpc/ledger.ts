@@ -1,41 +1,10 @@
 import * as grpc from '@grpc/grpc-js';
-import * as protoLoader from '@grpc/proto-loader';
-import * as path from 'path';
-import * as fs from 'fs';
 import type { ResolvedNetwork } from '../types.js';
-import { ledgerProtoPath, getProtoRoot } from '../proto-root.js';
+import { loadLedgerProto } from './proto-load.js';
+import { buildCredentials, buildMetadata, ledgerChannelOptions } from './channel.js';
 import { grpcDeadline, waitForGrpcReady } from './deadline.js';
-
-function loadLedgerProto(protoFile: string) {
-  const protoPath = ledgerProtoPath(protoFile);
-  const pkgDef = protoLoader.loadSync(protoPath, {
-    keepCase: true,
-    longs: String,
-    enums: String,
-    defaults: true,
-    oneofs: true,
-    includeDirs: [
-      path.join(getProtoRoot(), 'ledger-api'),
-      path.join(getProtoRoot(), 'admin-api'),
-    ],
-  });
-  return grpc.loadPackageDefinition(pkgDef);
-}
-
-function buildCredentials(network: ResolvedNetwork): grpc.ChannelCredentials {
-  if (!network.tls) return grpc.credentials.createInsecure();
-  if (network.tlsCertFile) {
-    const cert = fs.readFileSync(network.tlsCertFile);
-    return grpc.credentials.createSsl(cert);
-  }
-  return grpc.credentials.createSsl();
-}
-
-function buildMetadata(token: string): grpc.Metadata {
-  const meta = new grpc.Metadata();
-  meta.set('authorization', `Bearer ${token}`);
-  return meta;
-}
+import { unaryCall, promisifyUnary } from './unary.js';
+import { withRetry } from '../utils/retry.js';
 
 interface PartyManagementClient extends grpc.Client {
   ListKnownParties(
@@ -56,7 +25,10 @@ interface PartyManagementClient extends grpc.Client {
     options: grpc.CallOptions,
     cb: grpc.requestCallback<unknown>
   ): void;
-  GetParticipantId(
+}
+
+interface VersionServiceClient extends grpc.Client {
+  GetLedgerApiVersion(
     req: unknown,
     meta: grpc.Metadata,
     options: grpc.CallOptions,
@@ -64,8 +36,8 @@ interface PartyManagementClient extends grpc.Client {
   ): void;
 }
 
-interface VersionServiceClient extends grpc.Client {
-  GetLedgerApiVersion(
+interface PackageManagementClient extends grpc.Client {
+  ListKnownPackages(
     req: unknown,
     meta: grpc.Metadata,
     options: grpc.CallOptions,
@@ -84,16 +56,26 @@ export interface LedgerVersion {
   features?: unknown;
 }
 
+export interface KnownPackageDetails {
+  package_id: string;
+  package_size: string | number;
+  known_since?: unknown;
+  name?: string;
+  version?: string;
+}
+
 export interface ListKnownPartiesResult {
   parties: PartyDetails[];
   nextPageToken: string;
   truncated: boolean;
+  examined?: number;
 }
 
 export interface ListKnownPartiesOptions {
   filterParty?: string;
   pageToken?: string;
   maxParties?: number;
+  localOnly?: boolean;
 }
 
 export class LedgerClient {
@@ -104,14 +86,7 @@ export class LedgerClient {
   constructor(network: ResolvedNetwork) {
     this.address = `${network.host}:${network.ledgerPort}`;
     this.creds = buildCredentials(network);
-    const opts: grpc.ChannelOptions = {
-      'grpc.keepalive_time_ms': 10_000,
-      'grpc.keepalive_timeout_ms': 5_000,
-    };
-    if (network.grpcAuthority) {
-      (opts as Record<string, unknown>)['grpc.default_authority'] = network.grpcAuthority;
-    }
-    this.channelOptions = opts;
+    this.channelOptions = ledgerChannelOptions(network);
   }
 
   private makePartyClient(): PartyManagementClient {
@@ -130,157 +105,123 @@ export class LedgerClient {
     return new svc(this.address, this.creds, this.channelOptions) as unknown as VersionServiceClient;
   }
 
+  private makePackageClient(): PackageManagementClient {
+    const pkg = loadLedgerProto(
+      'com/daml/ledger/api/v2/admin/package_management_service.proto'
+    ) as Record<string, unknown>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const svc = (pkg as any).com.daml.ledger.api.v2.admin
+      .PackageManagementService as grpc.ServiceClientConstructor;
+    return new svc(this.address, this.creds, this.channelOptions) as unknown as PackageManagementClient;
+  }
+
   async listKnownParties(token: string, opts?: ListKnownPartiesOptions): Promise<ListKnownPartiesResult> {
-    const meta = buildMetadata(token);
-    const all: PartyDetails[] = [];
-    let pageToken = opts?.pageToken ?? '';
-    const maxParties = opts?.maxParties;
-    const client = this.makePartyClient();
-    let truncated = false;
-    let lastNext = '';
+    return withRetry(async () => {
+      const meta = buildMetadata(token);
+      const all: PartyDetails[] = [];
+      let pageToken = opts?.pageToken ?? '';
+      const maxParties = opts?.maxParties;
+      const client = this.makePartyClient();
+      let truncated = false;
+      let lastNext = '';
+      let examined = 0;
+      const scanCap = opts?.localOnly ? 1000 : Number.POSITIVE_INFINITY;
 
-    try {
-      await waitForGrpcReady(client);
+      try {
+        await waitForGrpcReady(client);
 
-      for (;;) {
-        const req: Record<string, unknown> = { page_size: 500 };
-        if (pageToken) req.page_token = pageToken;
-        if (opts?.filterParty) req.filter_party = opts.filterParty;
+        for (;;) {
+          const req: Record<string, unknown> = { page_size: 500 };
+          if (pageToken) req.page_token = pageToken;
+          if (opts?.filterParty) req.filter_party = opts.filterParty;
 
-        const { parties, next } = await new Promise<{ parties: PartyDetails[]; next: string }>(
-          (resolve, reject) => {
-            client.ListKnownParties(
-              req,
-              meta,
-              { deadline: grpcDeadline() },
-              (err: grpc.ServiceError | null, response: unknown) => {
-                if (err) reject(err);
-                else {
-                  const res = response as { party_details?: PartyDetails[]; next_page_token?: string };
-                  resolve({
-                    parties: res.party_details ?? [],
-                    next: res.next_page_token ?? '',
-                  });
-                }
-              }
-            );
+          const { parties, next } = await promisifyUnary<{ parties: PartyDetails[]; next: string }>(
+            (cb) => client.ListKnownParties(req, meta, { deadline: grpcDeadline() }, cb),
+            (response) => {
+              const res = response as { party_details?: PartyDetails[]; next_page_token?: string };
+              return { parties: res.party_details ?? [], next: res.next_page_token ?? '' };
+            }
+          );
+
+          lastNext = next;
+          examined += parties.length;
+
+          const batch = opts?.localOnly ? parties.filter((p) => p.is_local) : parties;
+
+          if (maxParties !== undefined && maxParties > 0) {
+            const room = maxParties - all.length;
+            if (room <= 0) break;
+            if (batch.length > room) {
+              all.push(...batch.slice(0, room));
+              truncated = Boolean(next) || batch.length > room;
+              break;
+            }
           }
-        );
 
-        lastNext = next;
+          all.push(...batch);
 
-        if (maxParties !== undefined && maxParties > 0) {
-          const room = maxParties - all.length;
-          if (room <= 0) break;
-          if (parties.length > room) {
-            all.push(...parties.slice(0, room));
+          if (!next) break;
+          if (maxParties !== undefined && maxParties > 0 && all.length >= maxParties) {
             truncated = Boolean(next);
             break;
           }
+          if (examined >= scanCap) {
+            truncated = true;
+            break;
+          }
+          pageToken = next;
         }
-
-        all.push(...parties);
-
-        if (!next) break;
-        if (maxParties !== undefined && maxParties > 0 && all.length >= maxParties) {
-          truncated = Boolean(next);
-          break;
-        }
-        pageToken = next;
+      } finally {
+        client.close();
       }
-    } finally {
-      client.close();
-    }
 
-    return {
-      parties: all,
-      nextPageToken: truncated ? lastNext : '',
-      truncated,
-    };
+      return {
+        parties: all,
+        nextPageToken: truncated ? lastNext : '',
+        truncated,
+        examined,
+      };
+    });
   }
 
   async getParties(token: string, partyIds: string[]): Promise<PartyDetails[]> {
     if (partyIds.length === 0) return [];
-    const meta = buildMetadata(token);
-    const client = this.makePartyClient();
-
-    try {
-      await waitForGrpcReady(client);
-      return await new Promise((resolve, reject) => {
-        client.GetParties(
-          { parties: partyIds },
-          meta,
-          { deadline: grpcDeadline() },
-          (err: grpc.ServiceError | null, response: unknown) => {
-            if (err) reject(err);
-            else {
-              const res = response as { party_details?: PartyDetails[] };
-              resolve(res.party_details ?? []);
-            }
-          }
-        );
-      });
-    } finally {
-      client.close();
-    }
+    return unaryCall(this.makePartyClient.bind(this), token, (client, meta, deadline) =>
+      promisifyUnary(
+        (cb) => client.GetParties({ parties: partyIds }, meta, { deadline }, cb),
+        (r) => (r as { party_details?: PartyDetails[] }).party_details ?? []
+      )
+    );
   }
 
   async allocateParty(hint: string, token: string): Promise<PartyDetails> {
-    const client = this.makePartyClient();
-    const meta = buildMetadata(token);
-
-    try {
-      await waitForGrpcReady(client);
-      return await new Promise((resolve, reject) => {
-        client.AllocateParty(
-          { party_id_hint: hint },
-          meta,
-          { deadline: grpcDeadline() },
-          (err: grpc.ServiceError | null, response: unknown) => {
-            if (err) reject(err);
-            else {
-              const res = response as { party_details?: PartyDetails };
-              if (!res.party_details) reject(new Error('No party_details in AllocateParty response'));
-              else resolve(res.party_details);
-            }
-          }
-        );
-      });
-    } finally {
-      client.close();
-    }
+    return unaryCall(this.makePartyClient.bind(this), token, (client, meta, deadline) =>
+      promisifyUnary(
+        (cb) => client.AllocateParty({ party_id_hint: hint }, meta, { deadline }, cb),
+        (r) => {
+          const details = (r as { party_details?: PartyDetails }).party_details;
+          if (!details) throw new Error('No party_details in AllocateParty response');
+          return details;
+        }
+      )
+    );
   }
 
   async getVersion(token: string): Promise<LedgerVersion> {
-    const client = this.makeVersionClient();
-    const meta = buildMetadata(token);
-
-    try {
-      await waitForGrpcReady(client);
-      return await new Promise((resolve, reject) => {
-        client.GetLedgerApiVersion(
-          {},
-          meta,
-          { deadline: grpcDeadline() },
-          (err: grpc.ServiceError | null, response: unknown) => {
-            if (err) reject(err);
-            else resolve(response as LedgerVersion);
-          }
-        );
-      });
-    } finally {
-      client.close();
-    }
+    return unaryCall(this.makeVersionClient.bind(this), token, (client, meta, deadline) =>
+      promisifyUnary(
+        (cb) => client.GetLedgerApiVersion({}, meta, { deadline }, cb),
+        (r) => r as LedgerVersion
+      )
+    );
   }
 
-  async ping(): Promise<boolean> {
-    return new Promise((resolve) => {
-      const ch = new grpc.Channel(this.address, this.creds, {});
-      const deadline = new Date(Date.now() + 4000);
-      ch.watchConnectivityState(ch.getConnectivityState(true), deadline, (err) => {
-        ch.close();
-        resolve(!err);
-      });
-    });
+  async listKnownPackages(token: string): Promise<KnownPackageDetails[]> {
+    return unaryCall(this.makePackageClient.bind(this), token, (client, meta, deadline) =>
+      promisifyUnary(
+        (cb) => client.ListKnownPackages({}, meta, { deadline }, cb),
+        (r) => (r as { package_details?: KnownPackageDetails[] }).package_details ?? []
+      )
+    );
   }
 }

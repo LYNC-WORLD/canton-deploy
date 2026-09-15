@@ -4,28 +4,25 @@ import type { CliFlags } from '../types.js';
 import { loadConfig } from '../config.js';
 import { resolveToken } from '../auth/resolve.js';
 import { LedgerClient } from '../grpc/ledger.js';
-import { formatGrpcError } from '../grpc/format-error.js';
 import { displayNameToHint } from '../utils/party-hint.js';
-
-function padEnd(str: string, len: number): string {
-  return str.length >= len ? str : str + ' '.repeat(len - str.length);
-}
+import { resolveParty } from '../onboarding.js';
+import { failSpinner } from '../utils/cli.js';
 
 function printPartyTable(parties: { party: string; is_local: boolean }[]): void {
   if (parties.length === 0) {
-    console.log(chalk.gray('  No parties found on this node.'));
+    console.log(chalk.gray('  No matching parties found.'));
     return;
   }
 
   console.log();
   const col1 = Math.max(10, ...parties.map((p) => p.party.length)) + 2;
-  const header = padEnd('PARTY ID', col1) + padEnd('LOCAL', 8);
+  const header = 'PARTY ID'.padEnd(col1) + 'LOCAL'.padEnd(8);
   console.log(chalk.bold('  ' + header));
   console.log(chalk.gray('  ' + '─'.repeat(header.length)));
 
   for (const p of parties) {
     const local = p.is_local ? chalk.green('yes') : chalk.gray('no');
-    console.log(`  ${chalk.cyan(padEnd(p.party, col1))}${local}`);
+    console.log(`  ${chalk.cyan(p.party.padEnd(col1))}${local}`);
   }
   console.log();
 }
@@ -47,15 +44,16 @@ export async function runParties(flags: CliFlags): Promise<void> {
     let parties;
     try {
       parties = await client.getParties(token, lookupIds);
+      if (flags.partiesLocalOnly) {
+        parties = parties.filter((p) => p.is_local);
+      }
       spinner.succeed(`Resolved ${parties.length} of ${lookupIds.length} id(s)`);
     } catch (err) {
-      spinner.fail('Failed to get parties');
-      console.error(chalk.red(`  ${formatGrpcError(err)}`));
-      process.exit(1);
+      failSpinner(spinner, 'Failed to get parties', err);
     }
     const missing = lookupIds.filter((id) => !parties.some((p) => p.party === id));
     printPartyTable(parties);
-    if (missing.length > 0) {
+    if (missing.length > 0 && !flags.partiesLocalOnly) {
       console.log(chalk.yellow(`  Not known on this participant: ${missing.join(', ')}\n`));
     }
     return;
@@ -68,36 +66,46 @@ export async function runParties(flags: CliFlags): Promise<void> {
   }
   const maxParties = lim !== undefined && lim > 0 ? lim : undefined;
 
-  const spinner = ora('Fetching parties...').start();
+  const spinner = ora(
+    flags.partiesLocalOnly ? 'Fetching local parties...' : 'Fetching parties...'
+  ).start();
   let parties: { party: string; is_local: boolean }[] = [];
   let truncated = false;
   let nextPageToken = '';
+  let examined = 0;
   try {
     const result = await client.listKnownParties(token, {
       filterParty: flags.partiesFilterPrefix,
       pageToken: flags.partiesPageToken,
       maxParties,
+      localOnly: flags.partiesLocalOnly,
     });
     parties = result.parties;
     truncated = result.truncated;
     nextPageToken = result.nextPageToken;
-    spinner.succeed(`Found ${parties.length} party(ies)`);
+    examined = result.examined ?? parties.length;
+    spinner.succeed(
+      flags.partiesLocalOnly
+        ? `Found ${parties.length} local party(ies) (scanned ${examined})`
+        : `Found ${parties.length} party(ies)`
+    );
   } catch (err) {
-    spinner.fail('Failed to list parties');
-    console.error(chalk.red(`  ${formatGrpcError(err)}`));
-    process.exit(1);
+    failSpinner(spinner, 'Failed to list parties', err);
   }
 
   printPartyTable(parties);
 
-  if (truncated && nextPageToken) {
+  if (truncated) {
+    const moreHint = nextPageToken
+      ? chalk.gray(`  Continue with: --page-token ${JSON.stringify(nextPageToken)}\n`)
+      : '';
     console.log(
       chalk.yellow(
-        '  More parties exist. Re-run with:\n' +
-          `    --page-token ${JSON.stringify(nextPageToken)}` +
-          (maxParties ? ` --limit ${maxParties}` : '') +
+        '  Results truncated' +
+          (maxParties ? ` (--limit ${maxParties})` : '') +
+          (flags.partiesLocalOnly ? ' (--local scan cap)' : '') +
           '\n'
-      )
+      ) + moreHint
     );
   }
 }
@@ -112,24 +120,11 @@ export async function runAllocateParty(displayName: string, flags: CliFlags): Pr
   const spinner = ora(`Checking party "${displayName}" (hint: ${hint})...`).start();
 
   try {
-    const existing = await client.listKnownParties(token, { filterParty: hint });
-    const match = existing.parties.find((p) => p.party.startsWith(hint + '::') || p.party === hint);
-
-    if (match) {
-      spinner.succeed(chalk.green('Party already exists'));
-      console.log(`\n  ${chalk.gray('Party ID:')} ${chalk.cyan(match.party)}`);
-      console.log(`  ${chalk.gray('Local:')}    ${match.is_local ? chalk.green('yes') : chalk.gray('no')}\n`);
-      return;
-    }
-
-    spinner.text = `Allocating party "${displayName}"...`;
-    const details = await client.allocateParty(hint, token);
-    spinner.succeed(chalk.green('Party allocated'));
-    console.log(`\n  ${chalk.gray('Party ID:')} ${chalk.cyan(details.party)}`);
-    console.log(`  ${chalk.gray('Local:')}    ${details.is_local ? chalk.green('yes') : chalk.gray('no')}\n`);
+    const { partyId, isLocal, created } = await resolveParty(client, token, displayName);
+    spinner.succeed(chalk.green(created ? 'Party allocated' : 'Party already exists'));
+    console.log(`\n  ${chalk.gray('Party ID:')} ${chalk.cyan(partyId)}`);
+    console.log(`  ${chalk.gray('Local:')}    ${isLocal ? chalk.green('yes') : chalk.gray('no')}\n`);
   } catch (err) {
-    spinner.fail('Party allocation failed');
-    console.error(chalk.red(`  ${formatGrpcError(err)}`));
-    process.exit(1);
+    failSpinner(spinner, 'Party allocation failed', err);
   }
 }

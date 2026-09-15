@@ -4,7 +4,7 @@ import type { CliFlags } from '../types.js';
 import { loadConfig } from '../config.js';
 import { resolveToken } from '../auth/resolve.js';
 import { AdminClient } from '../grpc/admin.js';
-import { formatGrpcError } from '../grpc/format-error.js';
+import { failSpinner } from '../utils/cli.js';
 
 export async function runVetDar(
   mainPackageId: string,
@@ -28,8 +28,6 @@ export async function runVetDar(
     spinner.succeed(chalk.green('VetDar completed'));
     console.log();
   } catch (err) {
-    spinner.fail('VetDar failed');
-    console.error(chalk.red(`  ${formatGrpcError(err)}`));
-    process.exit(1);
+    failSpinner(spinner, 'VetDar failed', err);
   }
 }

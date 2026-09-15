@@ -48,15 +48,15 @@ export function findProjectRoot(startDir: string): string {
   return path.resolve(startDir);
 }
 
-function matchesFilter(
+export function matchesFilter(
   pkgPath: string,
   pkgName: string,
   patterns: string[]
 ): boolean {
   if (patterns.length === 0) return true;
-  const norm = pkgPath.replace(/\\/g, '/');
+  const norm = pkgPath.replace(/\\/g, '/').replace(/^\.\//, '');
   return patterns.some((pat) => {
-    const p = pat.replace(/\\/g, '/');
+    const p = pat.replace(/\\/g, '/').replace(/^\.\//, '');
     return norm.includes(p) || pkgName === p || norm.endsWith(p);
   });
 }
