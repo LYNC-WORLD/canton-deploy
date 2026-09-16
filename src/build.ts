@@ -4,6 +4,7 @@ import { execa } from 'execa';
 import chalk from 'chalk';
 import ora from 'ora';
 import { findProjectRoot } from './dar-set.js';
+import { nestedDpmExecaOptions } from './utils/dpm-env.js';
 
 export async function runDpmBuild(cwd: string = process.cwd()): Promise<void> {
   const root = findProjectRoot(cwd);
@@ -15,6 +16,7 @@ export async function runDpmBuild(cwd: string = process.cwd()): Promise<void> {
   try {
     const proc = execa('dpm', args, {
       cwd: root,
+      ...nestedDpmExecaOptions(),
       stdio: ['inherit', 'pipe', 'pipe'],
     });
 

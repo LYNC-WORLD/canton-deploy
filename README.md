@@ -312,7 +312,7 @@ dpm canton-deploy packages --network devnet
 | `CANTON_DEPLOY_CONFIG` | Path to the config file |
 | `CANTON_DEPLOY_SCRIPT_USER_ID` | User id for `dpm script` |
 | `CANTON_DEPLOY_GRPC_DEADLINE_MS` | Per-RPC deadline (default `60000`) |
-| `CANTON_DEPLOY_GRPC_CONNECT_MS` | Channel ready wait (default `180000`) |
+| `CANTON_DEPLOY_GRPC_CONNECT_MS` | Channel ready wait (default `10000`) |
 
 ## Troubleshooting
 

@@ -5,9 +5,10 @@ const { loadSrc } = require('./load.cjs');
 const { displayNameToHint } = loadSrc('src/utils/party-hint.ts');
 const { resolveParty } = loadSrc('src/onboarding.ts');
 
-test('displayNameToHint lowercases and strips punctuation', () => {
-  assert.equal(displayNameToHint('Alice'), 'alice');
-  assert.equal(displayNameToHint('Alice Bob'), 'alice_bob');
+test('displayNameToHint preserves case and strips punctuation', () => {
+  assert.equal(displayNameToHint('Alice'), 'Alice');
+  assert.equal(displayNameToHint('Alice Bob'), 'Alice_Bob');
+  assert.equal(displayNameToHint('Alice!'), 'Alice');
 });
 
 test('resolveParty treats hint::fingerprint as an existing party id', async () => {
@@ -34,11 +35,11 @@ test('resolveParty allocates when the hint is new', async () => {
   const client = {
     listKnownParties: async () => ({ parties: [] }),
     allocateParty: async (hint) => {
-      assert.equal(hint, 'alice');
-      return { party: 'alice::abc', is_local: true };
+      assert.equal(hint, 'Alice');
+      return { party: 'Alice::abc', is_local: true };
     },
   };
   const got = await resolveParty(client, 'token', 'Alice');
-  assert.equal(got.partyId, 'alice::abc');
+  assert.equal(got.partyId, 'Alice::abc');
   assert.equal(got.created, true);
 });

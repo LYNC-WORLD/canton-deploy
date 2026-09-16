@@ -8,6 +8,7 @@ import type { CliFlags, ResolvedNetwork } from '../types.js';
 import { loadConfig } from '../config.js';
 import { resolveToken, decodeJwtPayload } from '../auth/resolve.js';
 import { resolveFullDarSet, normalizeCliDars } from '../dar-set.js';
+import { nestedDpmExecaOptions } from '../utils/dpm-env.js';
 
 function canTcpConnect(host: string, port: number, timeoutMs = 2000): Promise<boolean> {
   return new Promise((resolve) => {
@@ -110,7 +111,7 @@ export async function runScript(flags: CliFlags & { scriptName?: string }): Prom
   console.log(chalk.gray(`  DAR:    ${darPath}\n`));
 
   try {
-    await execa('dpm', args, { stdio: 'inherit' });
+    await execa('dpm', args, { stdio: 'inherit', ...nestedDpmExecaOptions() });
     console.log(chalk.green('\n  Script completed successfully.\n'));
   } catch (err) {
     console.error(chalk.red('\n  Script execution failed.'));

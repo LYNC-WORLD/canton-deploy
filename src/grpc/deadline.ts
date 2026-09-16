@@ -14,7 +14,7 @@ export function grpcDeadline(): grpc.Deadline {
 }
 
 export function connectDeadlineMs(): number {
-  return envPositiveInt('CANTON_DEPLOY_GRPC_CONNECT_MS', 180_000);
+  return envPositiveInt('CANTON_DEPLOY_GRPC_CONNECT_MS', 10_000);
 }
 
 export function waitForGrpcReady(client: grpc.Client): Promise<void> {
