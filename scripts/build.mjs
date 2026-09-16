@@ -36,6 +36,10 @@ fs.rmSync(protoDest, { recursive: true, force: true });
 fs.cpSync(protoSrc, protoDest, { recursive: true });
 console.log(`Copied protobufs → ${protoDest}`);
 
+const pkg = JSON.parse(fs.readFileSync(path.join(componentRoot, 'package.json'), 'utf8'));
+const cliVersion =
+  typeof pkg.version === 'string' && pkg.version.trim() ? pkg.version.trim() : '0.0.0';
+
 await esbuild.build({
   entryPoints: [entry],
   bundle: true,
@@ -46,7 +50,10 @@ await esbuild.build({
   minify: false,
   sourcemap: true,
   logLevel: 'info',
+  define: {
+    __CLI_VERSION__: JSON.stringify(cliVersion),
+  },
 });
 
 fs.chmodSync(outFile, 0o755);
-console.log(`Bundle complete → ${outFile}`);
+console.log(`Bundle complete → ${outFile} (version ${cliVersion})`);

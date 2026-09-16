@@ -22,14 +22,19 @@ import type { CliFlags } from './types.js';
 
 const program = new Command();
 
+declare const __CLI_VERSION__: string | undefined;
+
 function readCliVersion(): string {
+  if (typeof __CLI_VERSION__ === 'string' && __CLI_VERSION__.trim()) {
+    return __CLI_VERSION__.trim();
+  }
   try {
     const pkgPath = path.join(__dirname, '..', 'package.json');
     const v = (JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as { version?: string }).version;
     if (typeof v === 'string' && v.trim()) return v.trim();
   } catch {
   }
-  return '0.1.0';
+  return '0.0.0';
 }
 
 function collectDar(value: string, previous: string[]): string[] {
