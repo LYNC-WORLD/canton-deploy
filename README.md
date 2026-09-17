@@ -2,14 +2,21 @@
 
 Deploy Daml packages to a Canton validator from your project: build, upload, vet, allocate parties, onboard users, run scripts, and inspect what is on the ledger.
 
-You invoke it as **`dpm canton-deploy`**.
+canton-deploy is a [DPM](https://docs.canton.network/sdks-tools/cli-tools/dpm) component. You invoke it as `dpm canton-deploy`.
+
+```bash
+dpm add component ghcr.io/lync-world/canton-deploy:0.1.1
+dpm install package
+dpm canton-deploy init
+dpm canton-deploy deploy --network localnet
+```
 
 ## Requirements
 
-- [DPM](https://docs.canton.network/sdks-tools/cli-tools/dpm) 1.0.14 or later (bundled with Daml SDK 3.5+)
+- DPM 1.0.20 or later (bundles Daml SDK 3.5)
 - Node.js 18 or later
-- `damlc` and `daml-script` (installed with your SDK via DPM)
-- A running Canton participant with Admin, Ledger, and JSON APIs reachable from your machine
+- `damlc` and `daml-script` for your SDK version (installed with the SDK via DPM)
+- A running Canton participant with Admin, Ledger, and JSON APIs reachable from your machine. For LocalNet, add `canton-open-source` as a component to get `dpm sandbox` (see [Quick start](#quick-start)).
 
 ## Install
 
@@ -21,16 +28,7 @@ Add the component to that file. DPM does not allow `sdk-version` and `components
 components:
   - damlc:3.5.2
   - daml-script:3.5.2
-  - canton-deploy:0.1.0
-```
-
-If you install from an OCI registry, use the image reference you were given:
-
-```yaml
-components:
-  - damlc:3.5.2
-  - daml-script:3.5.2
-  - oci://<registry>/canton-deploy:0.1.0
+  - oci://ghcr.io/lync-world/canton-deploy:0.1.1
 ```
 
 Then install everything the project declares:
@@ -41,12 +39,16 @@ dpm install package
 
 `dpm install` in the same directory also installs listed components.
 
-You can add and pin the component in one step (DPM 1.0.20+ / SDK 3.5.2+):
+On first install DPM pins the component by digest and rewrites the line in `daml.yaml` to `oci://ghcr.io/lync-world/canton-deploy:0.1.1@sha256:…`. That is expected; leave it in place.
+
+You can add and pin the component in one step instead of editing `daml.yaml`:
 
 ```bash
-dpm add component canton-deploy:0.1.0
+dpm add component ghcr.io/lync-world/canton-deploy:0.1.1
 dpm install package
 ```
+
+`dpm add component` takes a full registry reference. The short form `canton-deploy:0.1.1` resolves against Digital Asset's component registry and will work once canton-deploy is published there.
 
 Confirm it is on the CLI:
 
@@ -56,20 +58,29 @@ dpm canton-deploy --help
 
 ## Quick start
 
-1. Start your participant (LocalNet defaults: Admin `5002`, Ledger `5001`, JSON API `7575`).
-2. From the project root:
+1. Start a participant. For LocalNet, add `canton-open-source` to `components:` (for example `- canton-open-source:3.5.17`), run `dpm install package`, then:
 
-```bash
-dpm canton-deploy init
-dpm canton-deploy status --network localnet
-dpm canton-deploy deploy --network localnet
-```
+   ```
+   dpm sandbox --ledger-api-port 5001 --admin-api-port 5002 --json-api-port 7575
+   ```
 
-On LocalNet, canton-deploy can mint a development HMAC JWT (`unsafe` secret, user `ledger-api-user`). Other networks need an explicit JWT.
+   It takes about 30 seconds and prints `Canton sandbox is ready.` Leave it running in its own terminal.
+
+2. From the project root, in another terminal:
+
+   ```
+   dpm canton-deploy init
+   dpm canton-deploy status --network localnet
+   dpm canton-deploy deploy --network localnet
+   ```
+
+`init` asks whether to add a DevNet profile alongside LocalNet and whether to accept the defaults for each (LocalNet: `localhost`, Admin `5002`, Ledger `5001`, JSON API `7575`, no TLS, LocalNet HMAC token, parties `Alice`/`Bob`, user `ledger-api-user`). Answer No to any of them to enter your own values.
+
+On LocalNet, canton-deploy can mint a development HMAC JWT (`unsafe` secret, user `ledger-api-user`). This is a development convenience for a local sandbox only. Other networks need an explicit JWT — see [Authentication](#authentication).
 
 ## Configuration
 
-Settings live in `canton-deploy.config.js` at the project root (or a parent directory). Select a named network with `--network`. Run `init` or copy [canton-deploy.config.example.js](./canton-deploy.config.example.js).
+Settings live in `canton-deploy.config.js` at the project root (or a parent directory). Select a named network with `--network`. Run `init` or copy [`canton-deploy.config.example.js`](./canton-deploy.config.example.js).
 
 If the nearest `package.json` has `"type": "module"`, name the file `canton-deploy.config.cjs` instead.
 
@@ -113,7 +124,7 @@ module.exports = {
 CLI flags override environment variables, which override the config file.
 
 | Key | What it controls |
-|---|---|
+| --- | --- |
 | `host` | Validator host or IP |
 | `adminPort` | Admin gRPC port (default `5002`) |
 | `ledgerPort` | Ledger gRPC port (default `5001`) |
@@ -122,7 +133,7 @@ CLI flags override environment variables, which override the config file.
 | `adminGrpcAuthority` | Same for the Admin API |
 | `httpHost` | HTTP `Host` header for the JSON API |
 | `httpUseTls` | Use `https` for JSON API calls |
-| `token` / `tokenFile` / `tokenCommand` | JWT source |
+| `token` / `tokenFile` / `tokenCommand` | JWT source (see [Authentication](#authentication)) |
 | `tls` / `tlsCertFile` | TLS for gRPC; optional CA file |
 | `synchronizerId` | Logical synchronizer id (`namespace::fingerprint`). Required when the participant has more than one synchronizer. Use the logical id from `status`, not a trailing `::NN-N` suffix. |
 | `vetOnUpload` | Vet during upload. Defaults **on** for `localnet`, **off** otherwise. Override with `--vet` / `--no-vet`. |
@@ -138,7 +149,14 @@ DAR upload uses the **Admin API**, so `adminPort` must be reachable.
 
 ## Authentication
 
-Resolved in this order: `--token` → `CANTON_DEPLOY_TOKEN` → config `token` → `tokenCommand` → `tokenFile` → LocalNet HMAC (network name `localnet` only).
+The JWT is resolved in this order:
+
+1. `--token`
+2. `CANTON_DEPLOY_TOKEN`
+3. config `token`
+4. config `tokenCommand` (a shell command whose stdout is the token)
+5. config `tokenFile`
+6. LocalNet development HMAC (network name `localnet` only)
 
 ```bash
 dpm canton-deploy token --decode --network localnet
@@ -152,10 +170,10 @@ Shared flags: `--network`, `--host`, `--admin-port`, `--ledger-port`, `--http-po
 Exit code `0` is success. `--log-file` appends output for CI.
 
 | Command | What it does |
-|---|---|
+| --- | --- |
 | `deploy` | Build (unless `--skip-build`), upload DARs, optionally vet, onboard parties/users, optional `--script` |
 | `vet` | Vet the same DAR set `deploy` would upload |
-| `vet-dar <mainPackageId>` | Vet one DAR by main package id |
+| `vet-dar <mainPackageId>` | Vet one already-uploaded DAR by main package id |
 | `dars` | List uploaded DARs (Admin API) |
 | `packages` | List known packages (Ledger API) |
 | `status` | Check Admin, Ledger, and JSON API connectivity |
@@ -179,7 +197,7 @@ dpm canton-deploy deploy --network localnet --no-vet
 ```
 
 | Flag | Meaning |
-|---|---|
+| --- | --- |
 | `--dar <path>` | Extra DAR (repeatable) |
 | `--skip-build` | Use existing `.daml/dist` or `.dpm/dist` artifacts |
 | `--vet` / `--no-vet` | Override `vetOnUpload` |
@@ -187,6 +205,8 @@ dpm canton-deploy deploy --network localnet --no-vet
 | `--script <Module:fn>` | Run a Daml Script after upload |
 
 Upload does not create contracts. Use `--script` or `run` to seed the ledger.
+
+A party name has one owner: either the config `parties` list or your script, not both. `deploy` allocates config parties before running `--script`, and Canton rejects a second `allocatePartyByHint` with the same hint. If a name is in `parties`, have the script look the party up instead of allocating it (filter `listKnownParties` by the `Alice::` prefix, or pass party ids in with `--input-file`); if the script allocates it, leave it out of `parties`.
 
 ### vet / vet-dar
 
@@ -196,7 +216,7 @@ dpm canton-deploy vet --network localnet --skip-build
 dpm canton-deploy vet-dar <mainPackageId> --network localnet
 ```
 
-`--no-sync` does not wait for vetting to be observed on the synchronizer.
+By default vetting waits until it is observed on the synchronizer. `--no-sync` returns as soon as the request is accepted.
 
 ### dars / packages
 
@@ -220,13 +240,13 @@ dpm canton-deploy allocate-party Alice --network localnet
 ```
 
 | Flag | Meaning |
-|---|---|
+| --- | --- |
 | `--local` | Only parties hosted on this participant |
 | `--filter-party <prefix>` | Prefix filter |
 | `--party <ids>` | Comma-separated party ids to look up |
 | `--limit <n>` / `--page-token` | Pagination |
 
-Config `parties` are display names (for example `Alice`). An existing party with that hint is reused.
+Config `parties` are display names (for example `Alice`). The name is used as the party id hint exactly as written, so `Alice` becomes `Alice::1220…` — the same party a Daml Script gets from `allocatePartyByHint "Alice"`. An existing party with that hint is reused.
 
 ### users / create-user
 
@@ -243,6 +263,8 @@ dpm canton-deploy create-user --network localnet --user-id ledger-api-user
 dpm canton-deploy run My.Module:setup --network localnet
 dpm canton-deploy run Setup:seed --network devnet --dar .daml/dist/my-app-0.1.0.dar --input-file seed.json
 ```
+
+Parties listed in the config are already allocated when the script runs; look them up rather than calling `allocatePartyByHint` for the same name (see [deploy](#deploy)).
 
 `dpm script` uses `--ledger-host` for both TCP and gRPC `:authority`. If `grpcAuthority` differs from `host`, that name must resolve and accept connections on `ledgerPort`.
 
@@ -270,27 +292,38 @@ dpm canton-deploy token --show --network devnet
 dpm canton-deploy init
 ```
 
-Writes `canton-deploy.config.js` after prompting for host, ports, TLS, and token source.
+Writes `canton-deploy.config.js` with a LocalNet profile and an optional DevNet profile. It asks whether to add DevNet and whether to accept the defaults for each profile; answer No to enter host, ports, TLS, and token source by hand.
 
 ## Examples
 
-**LocalNet**
+### LocalNet
 
 ```bash
+dpm sandbox --ledger-api-port 5001 --admin-api-port 5002 --json-api-port 7575   # separate terminal
 dpm canton-deploy init
 dpm canton-deploy status --network localnet
 dpm canton-deploy deploy --network localnet
 dpm canton-deploy contracts --network localnet
 ```
 
-**CI with pre-built DARs**
+### CI with pre-built DARs
+
+Pin the component by digest in CI so every run installs the same image. Use the `@sha256:…` value DPM wrote into your `daml.yaml` on first install:
+
+```yaml
+components:
+  - damlc:3.5.2
+  - daml-script:3.5.2
+  - oci://ghcr.io/lync-world/canton-deploy:0.1.1@sha256:<digest from your daml.yaml>
+```
 
 ```bash
+dpm install package
 dpm build
 dpm canton-deploy deploy --skip-build --network localnet --log-file deploy.log
 ```
 
-**DevNet with a JWT**
+### DevNet with a JWT
 
 ```bash
 export DEVNET_JWT_TOKEN='eyJ...'
@@ -302,7 +335,7 @@ dpm canton-deploy packages --network devnet
 ## Environment variables
 
 | Variable | Purpose |
-|---|---|
+| --- | --- |
 | `CANTON_DEPLOY_NETWORK` | Default `--network` |
 | `CANTON_DEPLOY_HOST` | Override `host` |
 | `CANTON_DEPLOY_ADMIN_PORT` / `LEDGER_PORT` / `HTTP_PORT` | Ports |
@@ -316,7 +349,13 @@ dpm canton-deploy packages --network devnet
 
 ## Troubleshooting
 
+**`dpm install package` says `…/components/canton-deploy:0.1.1: not found`** — a bare `canton-deploy:0.1.1` resolves against Digital Asset's registry (`europe-docker.pkg.dev/da-images`). Use `oci://ghcr.io/lync-world/canton-deploy:0.1.1` until the component is published there.
+
+**Every `dpm` command fails with `component "…" is currently not installed`, even `dpm --help`** — while any component listed in `daml.yaml` is not installed, DPM refuses all commands in that directory. Run `dpm install package`, or fix/remove the offending line.
+
 **`dpm canton-deploy` not found** — the component is not installed for this project. Add it under `components:` and run `dpm install package`.
+
+**`dpm sandbox` is an unknown command** — it comes from the `canton-open-source` component. Add `- canton-open-source:<version>` under `components:` and run `dpm install package`.
 
 **`status` cannot reach Admin API** — check `adminPort` (and `adminGrpcAuthority` if a proxy routes Admin gRPC by name). Upload uses the Admin API.
 
@@ -329,5 +368,7 @@ dpm canton-deploy packages --network devnet
 **`contracts` returns `PACKAGE_NAMES_NOT_FOUND`** — use `#<package-name>:Module:Template` from `daml.yaml`, not a hex package id.
 
 **`contracts` is empty after `deploy`** — run a script (`deploy --script` or `run`).
+
+**Script fails with `Party already exists` on `allocatePartyByHint`** — the name is also in config `parties`, so `deploy` allocated it first. Look the party up in the script, or remove it from `parties`.
 
 **JSON API unreachable, Admin and Ledger OK** — upload can still succeed. Fix `httpPort` / `httpHost` / `httpUseTls` for `contracts` and a full `status`.
