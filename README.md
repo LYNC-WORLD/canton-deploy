@@ -18,6 +18,19 @@ dpm canton-deploy deploy --network localnet
 - `damlc` and `daml-script` for your SDK version (installed with the SDK via DPM)
 - A running Canton participant with Admin, Ledger, and JSON APIs reachable from your machine. For LocalNet, add `canton-open-source` as a component to get `dpm sandbox` (see [Quick start](#quick-start)).
 
+
+## Using canton-deploy with Claude
+
+A Claude skill for canton-deploy is published in the [LYNC plugin marketplace](https://github.com/LYNC-WORLD/claude-plugins). With it installed, asking Claude to deploy a Daml package to Canton, set up a validator profile, or debug a failed upload gets answers built on `dpm canton-deploy` rather than hand-rolled API calls.
+
+```
+claude plugin marketplace add LYNC-WORLD/claude-plugins
+claude plugin install canton-deploy@lync
+```
+
+In the Claude desktop app: Customize → Plugins → Add marketplace → `https://github.com/LYNC-WORLD/claude-plugins`.
+
+
 ## Install
 
 Work from your Daml project root (the directory that contains `daml.yaml`, or the `multi-package.yaml` root).
