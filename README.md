@@ -2,6 +2,8 @@
 
 Deploy Daml packages to a Canton validator from your project: build, upload, vet, allocate parties, onboard users, run scripts, and inspect what is on the ledger.
 
+Docs: [canton-deploy](https://docs.lync.world/docs/CANTON/deploy/canton-deploy)
+
 canton-deploy is a [DPM](https://docs.canton.network/sdks-tools/cli-tools/dpm) component. You invoke it as `dpm canton-deploy`.
 
 ```bash
