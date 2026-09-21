@@ -7,7 +7,7 @@ Docs: [canton-deploy](https://docs.lync.world/docs/CANTON/deploy/canton-deploy)
 canton-deploy is a [DPM](https://docs.canton.network/sdks-tools/cli-tools/dpm) component. You invoke it as `dpm canton-deploy`.
 
 ```bash
-dpm add component ghcr.io/lync-world/canton-deploy:0.1.1
+dpm add component oci://ghcr.io/lync-world/canton-deploy:0.1.1
 dpm install package
 dpm canton-deploy init
 dpm canton-deploy deploy --network localnet
@@ -59,7 +59,7 @@ On first install DPM pins the component by digest and rewrites the line in `daml
 You can add and pin the component in one step instead of editing `daml.yaml`:
 
 ```bash
-dpm add component ghcr.io/lync-world/canton-deploy:0.1.1
+dpm add component oci://ghcr.io/lync-world/canton-deploy:0.1.1
 dpm install package
 ```
 
