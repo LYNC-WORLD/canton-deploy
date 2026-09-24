@@ -18,7 +18,7 @@ dpm canton-deploy deploy --network localnet
 - DPM 1.0.20 or later (bundles Daml SDK 3.5)
 - Node.js 18 or later
 - `damlc` and `daml-script` for your SDK version (installed with the SDK via DPM)
-- A running Canton participant with Admin, Ledger, and JSON APIs reachable from your machine. For LocalNet, add `canton-open-source` as a component to get `dpm sandbox` (see [Quick start](#quick-start)).
+- A running Canton participant with the Ledger and JSON APIs reachable from your machine. The Admin API is optional: it is needed only for `uploadVia: "admin"` and the `dars`, `vet`, and `vet-dar` commands. For LocalNet, add `canton-open-source` as a component to get `dpm sandbox` (see [Quick start](#quick-start)).
 
 
 ## Using canton-deploy with Claude
@@ -152,7 +152,7 @@ CLI flags override environment variables, which override the config file.
 | `token` / `oauth2` / `tokenFile` / `tokenCommand` | JWT source (see [Authentication](#authentication)) |
 | `tunnel.ssh` | Optional SSH `-L` forwards before network commands (remote DevNet) |
 | `tls` / `tlsCertFile` | TLS for gRPC; optional CA file |
-| `uploadVia` | `"admin"` or `"ledger"` — DAR upload path (default **`ledger`**). Ledger uses gRPC `UploadDarFile`, with JSON `POST /v2/dars` fallback if Ledger gRPC is unreachable. |
+| `uploadVia` | `"admin"` or `"ledger"` — DAR upload path (default ledger). Ledger uses gRPC `UploadDarFile`, with JSON `POST /v2/dars` fallback if Ledger gRPC is unreachable. |
 | `synchronizerId` | Logical synchronizer id (`namespace::fingerprint`). Required when the participant has more than one synchronizer. Use the logical id from `status`, not a trailing `::NN-N` suffix. |
 | `vetOnUpload` | Vet during upload. Defaults **on** for `localnet`, **off** otherwise (TestNet/MainNet upload-only by default). Override with `--vet` / `--no-vet`. |
 | `additionalDars` | Extra DAR paths uploaded before project DARs |
@@ -163,9 +163,9 @@ CLI flags override environment variables, which override the config file.
 
 Vendored DARs go in `additionalDars` or `--dar`. `data-dependencies` are not uploaded on their own.
 
-**Upload paths:** `ledger` (default) works on managed validators where only Ledger/JSON API is exposed. `admin` uses Canton Admin `UploadDar` (operator tooling; needs `adminPort`). Commands `dars`, `vet`, and `vet-dar` always use the **Admin API**. On validators without Admin, vet during upload with `deploy --vet` on the ledger path.
+**Upload paths:** `ledger` (default) works on managed validators where only Ledger/JSON API is exposed. `admin` uses Canton Admin `UploadDar` (operator tooling; needs `adminPort`). Commands `dars`, `vet`, and `vet-dar` always use the Admin API. On validators without Admin, vet during upload with `deploy --vet` on the ledger path.
 
-Upload path precedence: `--upload-via` → `CANTON_DEPLOY_UPLOAD_VIA` → config `uploadVia` → `ledger`.
+Upload path precedence: `--upload-via` → `CANTON_DEPLOY_UPLOAD_VIA` → `CANTON_PLUGIN_UPLOAD_VIA` → config `uploadVia` → `ledger`.
 
 ## Authentication
 
@@ -174,7 +174,7 @@ The JWT is resolved in this order:
 1. `--token`
 2. `CANTON_DEPLOY_TOKEN`
 3. config `token`
-4. config `oauth2` (OAuth2 **client credentials** — client secret via `clientSecretEnv`, never in config)
+4. config `oauth2` (OAuth2 client credentials — client secret via `clientSecretEnv`, never in config)
 5. config `tokenCommand` (a shell command whose stdout is the token)
 6. config `tokenFile`
 7. LocalNet development HMAC (network name `localnet` only)
@@ -188,7 +188,7 @@ oauth2: {
 },
 ```
 
-Tokens are cached in-process and refreshed when expiry is within five minutes. `dpm canton-deploy token --decode` shows the resolved **source** (`oauth2`, `tokenCommand`, etc.).
+Tokens are cached in-process and refreshed when expiry is within five minutes. `dpm canton-deploy token --decode` shows the resolved source (`oauth2`, `tokenCommand`, etc.).
 
 ```bash
 export DEVNET_OAUTH_CLIENT_SECRET='...'
@@ -198,7 +198,7 @@ dpm canton-deploy token --show --network devnet
 
 ### SSH tunnel (remote DevNet)
 
-When the validator runs on a remote host (e.g. Splice docker compose with nginx on `127.0.0.1:80`), canton-deploy can open **local port forwards** before any network command and tear them down on exit:
+When the validator runs on a remote host (e.g. Splice docker compose with nginx on `127.0.0.1:80`), canton-deploy can open local port forwards before any network command and tear them down on exit:
 
 ```js
 host: '127.0.0.1',
@@ -218,7 +218,7 @@ tunnel: {
 },
 ```
 
-Multiple forwards to the same remote `:80` are intentional: nginx routes by gRPC `:authority` and HTTP `Host`.
+Multiple forwards to the same remote `:80` are intentional: nginx routes by gRPC `:authority` and HTTP `Host`. See [examples/devnet-compose-remote](./examples/devnet-compose-remote).
 
 ## Commands
 
@@ -233,7 +233,7 @@ Exit code `0` is success. `--log-file` appends output for CI.
 | `vet-dar <mainPackageId>` | Vet one already-uploaded DAR by main package id |
 | `dars` | List uploaded DARs (Admin API) |
 | `packages` | List known packages (Ledger API) |
-| `status` | Probe Admin, Ledger, and JSON API; **exit 1** only if Ledger fails or Admin fails when `uploadVia` is `admin`. Lists connected synchronizers (Admin or JSON API). |
+| `status` | Probe Admin, Ledger, and JSON API; exit 1 only if Ledger fails or Admin fails when `uploadVia` is `admin`. Lists connected synchronizers (Admin or JSON API). |
 | `parties` | List known parties |
 | `allocate-party <name>` | Allocate a party by display name if it does not already exist |
 | `users` | List participant users |
@@ -249,7 +249,7 @@ Exit code `0` is success. `--log-file` appends output for CI.
 dpm canton-deploy deploy --network localnet
 dpm canton-deploy deploy --network localnet --dar ./vendor/token-standard.dar
 dpm canton-deploy deploy --network localnet --script My.Module:setup
-dpm canton-deploy deploy --network testnet --script Setup:setup --input-file parties.input.json
+dpm canton-deploy deploy --network testnet --skip-build --vet --script Setup:seed --input-file seed.json
 dpm canton-deploy deploy --network devnet --skip-build --dry-run
 dpm canton-deploy deploy --network localnet --no-vet
 dpm canton-deploy deploy --network testnet --upload-via ledger --skip-build
@@ -264,7 +264,7 @@ dpm canton-deploy deploy --network mainnet --skip-build --no-vet
 | `--vet` / `--no-vet` | Override `vetOnUpload` |
 | `--dry-run` | Print the DAR set; do not upload |
 | `--script <Module:fn>` | Run a Daml Script after upload |
-| `--input-file <path>` | JSON input for `--script` (same as `run --input-file`) |
+| `--input-file <path>` | JSON input passed to the `--script` function |
 
 Upload does not create contracts. Use `--script` or `run` to seed the ledger.
 
@@ -356,7 +356,7 @@ dpm canton-deploy token --show --network devnet
 dpm canton-deploy init
 ```
 
-Writes `canton-deploy.config.js` with a LocalNet profile and an optional DevNet profile. It asks whether to add DevNet and whether to accept the defaults for each profile; answer No to enter host, ports, TLS, and token source by hand.
+Writes `canton-deploy.config.js` with a LocalNet profile and optional DevNet, TestNet, and MainNet profiles. It asks which networks to add and whether to accept the defaults for each profile; answer No to enter host, ports, TLS, and token source by hand.
 
 ## Examples
 
@@ -403,11 +403,10 @@ Use one config file with named profiles; switch with `--network` only:
 ```bash
 dpm canton-deploy status --network testnet
 dpm canton-deploy deploy --network testnet --skip-build
-
 dpm canton-deploy deploy --network mainnet --skip-build --no-vet
 ```
 
-MainNet JWTs often come from `tokenCommand` (Vault or similar) in config — see [`canton-deploy.config.example.js`](./canton-deploy.config.example.js).
+MainNet JWTs often come from `tokenCommand` (Vault or similar) in config — see [canton-deploy.config.example.js](./canton-deploy.config.example.js).
 
 ## Environment variables
 
@@ -421,17 +420,22 @@ MainNet JWTs often come from `tokenCommand` (Vault or similar) in config — see
 | `CANTON_DEPLOY_HTTP_USE_TLS` | `true` / `false` |
 | `CANTON_DEPLOY_CONFIG` | Path to the config file |
 | `CANTON_DEPLOY_UPLOAD_VIA` | Default upload path (`admin` or `ledger`) |
+| `CANTON_PLUGIN_UPLOAD_VIA` | Alias for `CANTON_DEPLOY_UPLOAD_VIA` (proposal env name) |
 | `CANTON_DEPLOY_SCRIPT_USER_ID` | User id for `dpm script` |
 | `CANTON_DEPLOY_GRPC_DEADLINE_MS` | Per-RPC deadline (default `60000`) |
 | `CANTON_DEPLOY_GRPC_CONNECT_MS` | Channel ready wait (default `10000`) |
 
 ## Troubleshooting
 
-**`dpm install package` → `403` on `europe-docker.pkg.dev` and/or `401` on `ghcr.io`** — usually `DPM_INSECURE_REGISTRY=true`. Unset it or run `DPM_INSECURE_REGISTRY=false dpm install package`.
-
 **`dpm install package` says `…/components/canton-deploy:0.2.0: not found`** — a bare `canton-deploy:0.2.0` resolves against Digital Asset's registry (`europe-docker.pkg.dev/da-images`). Use `oci://ghcr.io/lync-world/canton-deploy:0.2.0` until the component is published there.
 
 **Every `dpm` command fails with `component "…" is currently not installed`, even `dpm --help`** — while any component listed in `daml.yaml` is not installed, DPM refuses all commands in that directory. Run `dpm install package`, or fix/remove the offending line.
+
+**Getting 401 on `dpm install`?** — check for `DPM_INSECURE_REGISTRY=true` in your shell configuration and `insecure: true` in `~/.dpm/dpm-config.yaml` 
+
+Run to fix:
+
+`DPM_INSECURE_REGISTRY=false dpm install package`
 
 **`dpm canton-deploy` not found** — the component is not installed for this project. Add it under `components:` and run `dpm install package`.
 
@@ -442,6 +446,8 @@ MainNet JWTs often come from `tokenCommand` (Vault or similar) in config — see
 **Managed validator (no Admin port)** — set `uploadVia: "ledger"` (default). Use `deploy --vet` for vetting; `vet` / `dars` need Admin.
 
 **Token expired / unauthenticated** — `dpm canton-deploy token --decode`, then refresh `token`, `tokenFile`, or `tokenCommand`.
+
+**`KNOWN_PACKAGE_VERSION` after changing Daml source** — bump the package version in `daml.yaml`, rebuild, and deploy.
 
 **`PROTO_DESERIALIZATION_FAILURE` on upload** — `synchronizerId` must be logical (`namespace::fingerprint`). Drop a trailing `::NN-N` from `status`, or omit the field on a single-synchronizer participant.
 
