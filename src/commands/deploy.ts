@@ -3,15 +3,16 @@ import * as path from 'path';
 import * as grpc from '@grpc/grpc-js';
 import chalk from 'chalk';
 import ora from 'ora';
-import type { CliFlags } from '../types.js';
-import { loadConfig, resolveVetOnUpload } from '../config.js';
+import type { CliFlags, ResolvedNetwork } from '../types.js';
+import { resolveVetOnUpload } from '../config.js';
+import { withNetworkSession } from '../network-session.js';
 import { resolveToken } from '../auth/resolve.js';
 import { runDpmBuild } from '../build.js';
 import { normalizeCliDars, resolveFullDarSet } from '../dar-set.js';
-import { AdminClient } from '../grpc/admin.js';
 import { formatGrpcError } from '../grpc/format-error.js';
 import { runPreflight } from '../preflight.js';
 import { ensureParties, ensureUsers } from '../onboarding.js';
+import { uploadDar } from '../upload.js';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -19,17 +20,19 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-export async function runDeploy(flags: CliFlags): Promise<void> {
-  const start = Date.now();
-  const config = await loadConfig(flags);
-  const { network } = config;
+async function executeDeploy(
+  network: ResolvedNetwork,
+  flags: CliFlags,
+  startMs: number
+): Promise<void> {
   const vetOnUpload = resolveVetOnUpload(network, flags);
   const cliDars = normalizeCliDars(flags.dar);
+  const uploadVia = network.uploadVia;
 
   console.log(chalk.bold('\n  canton-deploy deploy'));
   console.log(
     chalk.gray(
-      `  Upload: Admin API · host ${network.host} · admin ${network.adminPort} · vet on upload: ${vetOnUpload ? 'yes' : 'no'}\n`
+      `  Upload: ${uploadVia} · host ${network.host} · vet on upload: ${vetOnUpload ? 'yes' : 'no'}\n`
     )
   );
 
@@ -60,25 +63,23 @@ export async function runDeploy(flags: CliFlags): Promise<void> {
     return;
   }
 
-  const adminClient = new AdminClient(network);
-  const uploadTarget = `${network.host}:${network.adminPort}`;
   const allPackageIds: string[] = [];
+  let lastPathLabel = '';
 
   for (const entry of darSet) {
     const darBuffer = fs.readFileSync(entry.path);
     const darName = path.basename(entry.path);
-    const uploadSpinner = ora(`Uploading ${darName} to ${uploadTarget}...`).start();
+    const uploadSpinner = ora(`Uploading ${darName} via ${uploadVia}...`).start();
 
     try {
-      const result = await adminClient.uploadDar(darBuffer, token, darName, {
-        vetAllPackages: vetOnUpload,
-        synchronizeVetting: vetOnUpload,
-        synchronizerId: network.synchronizerId,
-      });
-      const ids = result.dar_ids ?? [];
-      allPackageIds.push(...ids);
+      const result = await uploadDar(network, token, darBuffer, darName, { vetOnUpload });
+      lastPathLabel = result.pathLabel;
+      allPackageIds.push(...result.packageIds);
       uploadSpinner.succeed(
-        chalk.green(`Uploaded ${darName}`) + chalk.gray(` (${ids.length} package id(s))`)
+        chalk.green(`Uploaded ${darName}`) +
+          chalk.gray(
+            ` (${result.pathLabel}${result.packageIds.length ? `, ${result.packageIds.length} package id(s)` : ''})`
+          )
       );
     } catch (err) {
       uploadSpinner.fail(`Upload failed: ${darName}`);
@@ -101,19 +102,24 @@ export async function runDeploy(flags: CliFlags): Promise<void> {
     console.log(chalk.gray(`\n  Running script: ${flags.script}`));
     const { runScript } = await import('./run.js');
     const primaryDar = darSet[darSet.length - 1]?.path;
-    await runScript({ ...flags, dar: primaryDar });
+    await runScript({ ...flags, dar: primaryDar }, { network, skipTunnel: true });
   }
 
-  const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+  const elapsed = ((Date.now() - startMs) / 1000).toFixed(1);
   console.log(chalk.bold('\n  Deploy summary'));
   console.log(chalk.gray('  ─────────────────────────────────────'));
   console.log(`  ${chalk.gray('DARs:')}     ${darSet.length}`);
-  console.log(`  ${chalk.gray('Upload:')}   Admin API`);
-  console.log(`  ${chalk.gray('Target:')}   ${uploadTarget}`);
+  console.log(`  ${chalk.gray('Upload:')}   ${lastPathLabel || uploadVia}`);
+  console.log(`  ${chalk.gray('Target:')}   ${network.host}`);
   console.log(`  ${chalk.gray('Vetted:')}   ${vetOnUpload ? 'yes' : 'no (upload-only)'}`);
   if (allPackageIds.length > 0) {
     console.log(`  ${chalk.gray('Package:')}  ${allPackageIds[0]}`);
   }
   console.log(`  ${chalk.gray('Time:')}     ${elapsed}s`);
   console.log(chalk.green('\n  Deployment complete.\n'));
+}
+
+export async function runDeploy(flags: CliFlags): Promise<void> {
+  const startMs = Date.now();
+  await withNetworkSession(flags, (network) => executeDeploy(network, flags, startMs));
 }

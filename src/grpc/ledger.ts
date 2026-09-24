@@ -5,6 +5,7 @@ import { buildCredentials, buildMetadata, ledgerChannelOptions } from './channel
 import { grpcDeadline, waitForGrpcReady } from './deadline.js';
 import { unaryCall, promisifyUnary } from './unary.js';
 import { withRetry } from '../utils/retry.js';
+import { toLogicalSynchronizerId } from '../utils/synchronizer-id.js';
 
 interface PartyManagementClient extends grpc.Client {
   ListKnownParties(
@@ -38,6 +39,12 @@ interface VersionServiceClient extends grpc.Client {
 
 interface PackageManagementClient extends grpc.Client {
   ListKnownPackages(
+    req: unknown,
+    meta: grpc.Metadata,
+    options: grpc.CallOptions,
+    cb: grpc.requestCallback<unknown>
+  ): void;
+  UploadDarFile(
     req: unknown,
     meta: grpc.Metadata,
     options: grpc.CallOptions,
@@ -222,6 +229,26 @@ export class LedgerClient {
         (cb) => client.ListKnownPackages({}, meta, { deadline }, cb),
         (r) => (r as { package_details?: KnownPackageDetails[] }).package_details ?? []
       )
+    );
+  }
+
+  async uploadDarFile(
+    darBuffer: Buffer,
+    token: string,
+    options: { vetOnUpload: boolean; synchronizerId?: string }
+  ): Promise<void> {
+    const request: Record<string, unknown> = {
+      dar_file: darBuffer,
+      vetting_change: options.vetOnUpload
+        ? 'VETTING_CHANGE_VET_ALL_PACKAGES'
+        : 'VETTING_CHANGE_DONT_VET_ANY_PACKAGES',
+    };
+    if (options.synchronizerId) {
+      request.synchronizer_id = toLogicalSynchronizerId(options.synchronizerId);
+    }
+
+    return unaryCall(this.makePackageClient.bind(this), token, (client, meta, deadline) =>
+      promisifyUnary((cb) => client.UploadDarFile(request, meta, { deadline }, cb), () => undefined)
     );
   }
 }

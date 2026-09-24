@@ -56,6 +56,7 @@ function sharedNetworkOptions(cmd: Command): Command {
 
 function networkFlags(opts: Record<string, unknown>): CliFlags {
   return {
+    uploadVia: opts.uploadVia as string | undefined,
     host: opts.host as string | undefined,
     adminPort: opts.adminPort as number | undefined,
     ledgerPort: opts.ledgerPort as number | undefined,
@@ -84,19 +85,21 @@ function withLogFile(run: (...args: any[]) => Promise<void>): (...args: any[]) =
 
 program
   .name('canton-deploy')
-  .description('Deploy Daml packages to Canton validators via Admin API (LocalNet/DevNet)')
+  .description('Deploy Daml packages to Canton validators (LocalNet, DevNet, TestNet, MainNet)')
   .version(readCliVersion());
 
 sharedNetworkOptions(
   program
     .command('deploy')
-    .description('Build (dpm) and upload DAR set via Admin API; optional parties, users, script')
+    .description('Build (dpm) and upload DAR set; optional parties, users, script')
+    .option('--upload-via <admin|ledger>', 'Upload path (default from config/env: ledger)')
     .option('--dar <path>', 'Additional DAR path (repeatable)', collectDar, [] as string[])
     .option('--skip-build', 'Use pre-built DAR artifacts only')
     .option('--vet', 'Vet packages during upload (override config)')
     .option('--no-vet', 'Upload only, do not vet')
     .option('--dry-run', 'Show resolved DAR set without uploading')
     .option('--script <Module:fn>', 'Run a Daml Script after deployment')
+    .option('--input-file <path>', 'JSON input file for --script (same as run)')
     .action(
       withLogFile(async (opts) => {
         await runDeploy({
@@ -107,6 +110,7 @@ sharedNetworkOptions(
           noVet: opts.noVet,
           dryRun: opts.dryRun,
           script: opts.script,
+          scriptInputFile: opts.inputFile,
         });
       })
     )
@@ -150,7 +154,11 @@ sharedNetworkOptions(program.command('dars').description('List uploaded DARs (Ad
 );
 
 sharedNetworkOptions(
-  program.command('status').description('Check Admin, Ledger, and JSON API connectivity')
+  program
+    .command('status')
+    .description(
+      'Check Ledger API (required); Admin required only when uploadVia is admin; JSON optional; lists synchronizers'
+    )
 ).action(
   withLogFile(async (opts) => {
     await runStatus(networkFlags(opts));
@@ -259,7 +267,7 @@ sharedNetworkOptions(
 
 program
   .command('init')
-  .description('Create canton-deploy.config.js (LocalNet + optional DevNet)')
+  .description('Create canton-deploy.config.js (multi-network profiles)')
   .action(async () => {
     await runInit().catch(handleError);
   });

@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import ora from 'ora';
-import type { CliFlags } from '../types.js';
-import { loadConfig } from '../config.js';
+import type { CliFlags, ResolvedNetwork } from '../types.js';
+import { withNetworkSession } from '../network-session.js';
 import { resolveToken } from '../auth/resolve.js';
 import { jsonApiDisplayUrl, jsonApiFetch } from '../json-api.js';
 
@@ -18,9 +18,7 @@ interface ActiveContract {
   };
 }
 
-export async function runContracts(flags: CliFlags): Promise<void> {
-  const config = await loadConfig(flags);
-  const { network } = config;
+async function executeContracts(network: ResolvedNetwork, flags: CliFlags): Promise<void> {
   const token = await resolveToken(network);
 
   console.log(chalk.bold('\n  canton-deploy contracts'));
@@ -78,43 +76,14 @@ export async function runContracts(flags: CliFlags): Promise<void> {
     filtersForAnyParty?: { cumulative: Array<{ identifierFilter: IdentifierFilter }> };
   };
 
-  let eventFormat: EventFormat;
-
-  if (flags.party && flags.template) {
-    eventFormat = {
-      filtersByParty: {
-        [flags.party]: {
-          cumulative: [{ identifierFilter: templateFilter(flags.template) }],
-        },
-      },
-      verbose: false,
-    };
-  } else if (flags.party) {
-    eventFormat = {
-      filtersByParty: {
-        [flags.party]: {
-          cumulative: [{ identifierFilter: wildcardFilter() }],
-        },
-      },
-      verbose: false,
-    };
-  } else if (flags.template) {
-    eventFormat = {
-      filtersByParty: {},
-      filtersForAnyParty: {
-        cumulative: [{ identifierFilter: templateFilter(flags.template) }],
-      },
-      verbose: false,
-    };
-  } else {
-    eventFormat = {
-      filtersByParty: {},
-      filtersForAnyParty: {
-        cumulative: [{ identifierFilter: wildcardFilter() }],
-      },
-      verbose: false,
-    };
-  }
+  const cumulative = [
+    {
+      identifierFilter: flags.template ? templateFilter(flags.template) : wildcardFilter(),
+    },
+  ];
+  const eventFormat: EventFormat = flags.party
+    ? { filtersByParty: { [flags.party]: { cumulative } }, verbose: false }
+    : { filtersByParty: {}, filtersForAnyParty: { cumulative }, verbose: false };
 
   const filterBody = {
     eventFormat,
@@ -207,4 +176,8 @@ export async function runContracts(flags: CliFlags): Promise<void> {
     }
     console.log();
   }
+}
+
+export async function runContracts(flags: CliFlags): Promise<void> {
+  return withNetworkSession(flags, (network) => executeContracts(network, flags));
 }

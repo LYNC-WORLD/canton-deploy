@@ -3,7 +3,16 @@ import * as path from 'path';
 import { cosmiconfig } from 'cosmiconfig';
 import { z } from 'zod';
 import chalk from 'chalk';
-import type { CliFlags, ConfigUser, ResolvedConfig, ResolvedNetwork } from './types.js';
+import type {
+  CliFlags,
+  ConfigUser,
+  OAuth2Config,
+  ResolvedConfig,
+  ResolvedNetwork,
+  TunnelConfig,
+  UploadVia,
+} from './types.js';
+import { resolveUploadVia } from './upload-via.js';
 
 const CONFIG_FILENAMES = [
   'canton-deploy.config.js',
@@ -31,8 +40,37 @@ const UserSchema = z.object({
   rights: z.array(z.enum(['CanActAs', 'CanReadAs'])).default(['CanActAs', 'CanReadAs']),
 });
 
+const UploadViaSchema = z.enum(['admin', 'ledger']);
+
+const OAuth2Schema = z.object({
+  tokenUrl: z.string().url(),
+  clientId: z.string().min(1),
+  clientSecretEnv: z.string().min(1),
+  audience: z.string().min(1),
+  scope: z.string().optional(),
+});
+
+const SshForwardSchema = z.object({
+  localPort: z.number().int().positive(),
+  remoteHost: z.string().min(1),
+  remotePort: z.number().int().positive(),
+});
+
+const SshTunnelSchema = z.object({
+  host: z.string().min(1),
+  user: z.string().min(1),
+  port: z.number().int().positive().optional(),
+  identityFile: z.string().optional(),
+  forwards: z.array(SshForwardSchema).min(1),
+});
+
+const TunnelSchema = z.object({
+  ssh: SshTunnelSchema.optional(),
+});
+
 const NetworkSchema = z.object({
   host: z.string(),
+  uploadVia: UploadViaSchema.optional(),
   adminPort: z.number().int().positive().optional(),
   ledgerPort: z.number().int().positive().optional(),
   httpPort: z.number().int().positive().optional(),
@@ -41,8 +79,10 @@ const NetworkSchema = z.object({
   httpUseTls: z.boolean().default(false),
   adminGrpcAuthority: z.string().optional(),
   token: z.string().optional(),
+  oauth2: OAuth2Schema.optional(),
   tokenFile: z.string().optional(),
   tokenCommand: z.string().optional(),
+  tunnel: TunnelSchema.optional(),
   tls: z.boolean().default(false),
   tlsCertFile: z.string().optional(),
   synchronizerId: z.string().optional(),
@@ -159,6 +199,7 @@ export async function loadConfig(flags: CliFlags): Promise<ResolvedConfig> {
 
   const resolved: ResolvedNetwork = {
     name: networkName,
+    uploadVia: resolveUploadVia(flags.uploadVia, networkConfig.uploadVia as UploadVia | undefined),
     host: resolvedHost,
     adminPort: resolvePortMultiEnv(
       flags.adminPort,
@@ -187,8 +228,10 @@ export async function loadConfig(flags: CliFlags): Promise<ResolvedConfig> {
       process.env.CANTON_DEPLOY_ADMIN_GRPC_AUTHORITY ?? networkConfig.adminGrpcAuthority,
     httpUseTls,
     token: flags.token ?? process.env.CANTON_DEPLOY_TOKEN ?? networkConfig.token,
+    oauth2: networkConfig.oauth2 as OAuth2Config | undefined,
     tokenFile: networkConfig.tokenFile,
     tokenCommand: networkConfig.tokenCommand,
+    tunnel: networkConfig.tunnel as TunnelConfig | undefined,
     tls: networkConfig.tls,
     tlsCertFile: networkConfig.tlsCertFile,
     synchronizerId: networkConfig.synchronizerId,

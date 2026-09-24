@@ -1,20 +1,21 @@
 import chalk from 'chalk';
 import ora from 'ora';
-import type { CliFlags } from '../types.js';
-import { loadConfig } from '../config.js';
+import type { CliFlags, ResolvedNetwork } from '../types.js';
+import { withNetworkSession } from '../network-session.js';
 import { resolveToken } from '../auth/resolve.js';
 import { LedgerClient } from '../grpc/ledger.js';
 import { failSpinner } from '../utils/cli.js';
 
-export async function runPackages(flags: CliFlags): Promise<void> {
-  const config = await loadConfig(flags);
-  const { network } = config;
+async function executePackages(network: ResolvedNetwork): Promise<void> {
   const token = await resolveToken(network);
-
   const client = new LedgerClient(network);
 
   console.log(chalk.bold('\n  canton-deploy packages'));
-  console.log(chalk.gray(`  Ledger API: ${network.host}:${network.ledgerPort}${network.grpcAuthority ? ` (authority: ${network.grpcAuthority})` : ''}\n`));
+  console.log(
+    chalk.gray(
+      `  Ledger API: ${network.host}:${network.ledgerPort}${network.grpcAuthority ? ` (authority: ${network.grpcAuthority})` : ''}\n`
+    )
+  );
 
   const spinner = ora('Listing known packages...').start();
   try {
@@ -49,4 +50,8 @@ export async function runPackages(flags: CliFlags): Promise<void> {
   } catch (err) {
     failSpinner(spinner, 'Failed to list known packages', err);
   }
+}
+
+export async function runPackages(flags: CliFlags): Promise<void> {
+  return withNetworkSession(flags, executePackages);
 }

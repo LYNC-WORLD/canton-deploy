@@ -1,6 +1,6 @@
 {
   "name": "canton-deploy",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "description": "DPM component: deploy and operate Daml packages on Canton validators (dpm canton-deploy)",
   "type": "module",

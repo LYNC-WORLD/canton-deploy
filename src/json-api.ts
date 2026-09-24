@@ -1,6 +1,7 @@
 import * as http from 'http';
 import * as https from 'https';
 import type { ResolvedNetwork } from './types.js';
+import { toLogicalSynchronizerId } from './utils/synchronizer-id.js';
 
 export function jsonApiBaseUrl(network: ResolvedNetwork): string {
   const scheme = network.httpUseTls ? 'https' : 'http';
@@ -34,7 +35,7 @@ export async function jsonApiFetch(
   init: {
     method?: string;
     headers?: JsonApiHeaders;
-    body?: string;
+    body?: string | Buffer;
   } = {}
 ): Promise<{ ok: boolean; status: number; statusText: string; text: () => Promise<string>; json: () => Promise<unknown> }> {
   const base = jsonApiBaseUrl(network);
@@ -42,20 +43,26 @@ export async function jsonApiFetch(
   const isHttps = url.protocol === 'https:';
   const headers = jsonApiHeaders(network, init.headers ?? {});
   const body = init.body;
+  const bodyLen = body === undefined ? 0 : Buffer.isBuffer(body) ? body.length : Buffer.byteLength(body);
 
   const result = await new Promise<{ status: number; statusText: string; body: string }>(
     (resolve, reject) => {
+      const reqHeaders: Record<string, string | number> = { ...headers };
+      if (body !== undefined) {
+        reqHeaders['Content-Length'] = bodyLen;
+        if (Buffer.isBuffer(body) && !reqHeaders['Content-Type']) {
+          reqHeaders['Content-Type'] = 'application/octet-stream';
+        }
+      }
+
       const req = (isHttps ? https : http).request(
         {
           protocol: url.protocol,
           hostname: url.hostname,
           port: url.port,
           path: `${url.pathname}${url.search}`,
-          method: init.method ?? (body ? 'POST' : 'GET'),
-          headers: {
-            ...headers,
-            ...(body ? { 'Content-Length': Buffer.byteLength(body) } : {}),
-          },
+          method: init.method ?? (body !== undefined ? 'POST' : 'GET'),
+          headers: reqHeaders,
         },
         (res) => {
           const chunks: Buffer[] = [];
@@ -70,7 +77,7 @@ export async function jsonApiFetch(
         }
       );
       req.on('error', reject);
-      if (body) req.write(body);
+      if (body !== undefined) req.write(body);
       req.end();
     }
   );
@@ -82,4 +89,58 @@ export async function jsonApiFetch(
     text: async () => result.body,
     json: async () => JSON.parse(result.body) as unknown,
   };
+}
+
+export interface ConnectedSynchronizerInfo {
+  synchronizerId: string;
+  synchronizerAlias?: string;
+  permission?: string;
+}
+
+export async function jsonApiGetConnectedSynchronizers(
+  network: ResolvedNetwork,
+  token: string
+): Promise<ConnectedSynchronizerInfo[]> {
+  const res = await jsonApiFetch(network, '/v2/state/connected-synchronizers', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} ${res.statusText}`);
+  }
+  const data = (await res.json()) as {
+    connectedSynchronizers?: Array<{
+      synchronizerId?: string;
+      synchronizerAlias?: string;
+      permission?: string;
+    }>;
+  };
+  return (data.connectedSynchronizers ?? [])
+    .filter((s) => s.synchronizerId)
+    .map((s) => ({
+      synchronizerId: s.synchronizerId!,
+      synchronizerAlias: s.synchronizerAlias,
+      permission: s.permission,
+    }));
+}
+
+export async function jsonApiUploadDar(
+  network: ResolvedNetwork,
+  token: string,
+  darBuffer: Buffer,
+  options: { vetOnUpload: boolean; synchronizerId?: string }
+): Promise<void> {
+  const params = new URLSearchParams();
+  params.set('vetAllPackages', String(options.vetOnUpload));
+  if (options.synchronizerId) {
+    params.set('synchronizerId', toLogicalSynchronizerId(options.synchronizerId));
+  }
+  const res = await jsonApiFetch(network, `/v2/dars?${params.toString()}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: darBuffer,
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status} ${res.statusText}${detail ? `: ${detail.slice(0, 200)}` : ''}`);
+  }
 }

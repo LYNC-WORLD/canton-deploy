@@ -1,15 +1,13 @@
 import chalk from 'chalk';
 import ora from 'ora';
-import type { CliFlags } from '../types.js';
-import { loadConfig } from '../config.js';
+import type { CliFlags, ResolvedNetwork } from '../types.js';
+import { withNetworkSession } from '../network-session.js';
 import { resolveToken } from '../auth/resolve.js';
 import { UserManagementGrpcClient } from '../grpc/user-management.js';
 import { ensureParties } from '../onboarding.js';
 import { failSpinner } from '../utils/cli.js';
 
-export async function runUsers(flags: CliFlags): Promise<void> {
-  const config = await loadConfig(flags);
-  const { network } = config;
+async function executeUsers(network: ResolvedNetwork): Promise<void> {
   const token = await resolveToken(network);
   const client = new UserManagementGrpcClient(network);
 
@@ -41,9 +39,7 @@ export async function runUsers(flags: CliFlags): Promise<void> {
   }
 }
 
-export async function runCreateUser(flags: CliFlags): Promise<void> {
-  const config = await loadConfig(flags);
-  const { network } = config;
+async function executeCreateUser(network: ResolvedNetwork, flags: CliFlags): Promise<void> {
   const token = await resolveToken(network);
 
   const userId = flags.userId;
@@ -77,4 +73,12 @@ export async function runCreateUser(flags: CliFlags): Promise<void> {
   } catch (err) {
     failSpinner(spinner, 'create-user failed', err);
   }
+}
+
+export async function runUsers(flags: CliFlags): Promise<void> {
+  return withNetworkSession(flags, executeUsers);
+}
+
+export async function runCreateUser(flags: CliFlags): Promise<void> {
+  return withNetworkSession(flags, (network) => executeCreateUser(network, flags));
 }

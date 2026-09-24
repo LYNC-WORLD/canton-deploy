@@ -4,12 +4,12 @@ import chalk from 'chalk';
 import * as jwt from 'jsonwebtoken';
 import type { ResolvedNetwork } from '../types.js';
 import { generateLocalNetToken } from './localnet.js';
+import { fetchOAuth2Token } from './oauth2.js';
 
 interface JwtPayload {
   sub?: string;
   aud?: string | string[];
   exp?: number;
-  iat?: number;
 }
 
 export function decodeJwtPayload(token: string): JwtPayload | null {
@@ -34,9 +34,13 @@ export function checkTokenExpiry(token: string): void {
 }
 
 export function tokenSourceKind(
-  network: Pick<ResolvedNetwork, 'name' | 'token' | 'tokenCommand' | 'tokenFile'>
-): 'token' | 'tokenCommand' | 'tokenFile' | 'localnet' | 'none' {
+  network: Pick<
+    ResolvedNetwork,
+    'name' | 'token' | 'oauth2' | 'tokenCommand' | 'tokenFile'
+  >
+): 'token' | 'oauth2' | 'tokenCommand' | 'tokenFile' | 'localnet' | 'none' {
   if (network.token) return 'token';
+  if (network.oauth2) return 'oauth2';
   if (network.tokenCommand) return 'tokenCommand';
   if (network.tokenFile) return 'tokenFile';
   if (network.name === 'localnet') return 'localnet';
@@ -49,6 +53,12 @@ export async function resolveToken(network: ResolvedNetwork): Promise<string> {
   if (kind === 'token') {
     checkTokenExpiry(network.token!);
     return network.token!;
+  }
+
+  if (kind === 'oauth2') {
+    const token = await fetchOAuth2Token(network.name, network.oauth2!);
+    checkTokenExpiry(token);
+    return token;
   }
 
   if (kind === 'tokenCommand') {
@@ -86,7 +96,9 @@ export async function resolveToken(network: ResolvedNetwork): Promise<string> {
   }
 
   console.error(chalk.red(`No token configured for network "${network.name}".`));
-  console.error(chalk.gray('  Set token, tokenFile, or tokenCommand in canton-deploy.config.js'));
+  console.error(
+    chalk.gray('  Set token, oauth2, tokenFile, or tokenCommand in canton-deploy.config.js')
+  );
   console.error(chalk.gray('  Or pass --token <jwt> on the command line'));
   process.exit(1);
 }

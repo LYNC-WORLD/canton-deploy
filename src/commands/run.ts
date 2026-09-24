@@ -1,29 +1,14 @@
 import * as fs from 'fs';
-import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
 import chalk from 'chalk';
 import { execa } from 'execa';
 import type { CliFlags, ResolvedNetwork } from '../types.js';
-import { loadConfig } from '../config.js';
 import { resolveToken, decodeJwtPayload } from '../auth/resolve.js';
 import { resolveFullDarSet, normalizeCliDars } from '../dar-set.js';
 import { nestedDpmExecaOptions } from '../utils/dpm-env.js';
-
-function canTcpConnect(host: string, port: number, timeoutMs = 2000): Promise<boolean> {
-  return new Promise((resolve) => {
-    const socket = net.connect({ host, port });
-    const done = (ok: boolean) => {
-      socket.removeAllListeners();
-      socket.destroy();
-      resolve(ok);
-    };
-    socket.setTimeout(timeoutMs);
-    socket.once('connect', () => done(true));
-    socket.once('timeout', () => done(false));
-    socket.once('error', () => done(false));
-  });
-}
+import { withNetworkSession } from '../network-session.js';
+import { canTcpConnect } from '../tunnel.js';
 
 async function resolveScriptLedgerHost(
   network: ResolvedNetwork
@@ -33,7 +18,7 @@ async function resolveScriptLedgerHost(
     return { host: network.host, via: 'host' };
   }
 
-  if (await canTcpConnect(authority, network.ledgerPort)) {
+  if (await canTcpConnect(authority, network.ledgerPort, 2000)) {
     return { host: authority, via: 'grpcAuthority' };
   }
 
@@ -51,15 +36,16 @@ async function resolveScriptLedgerHost(
   process.exit(1);
 }
 
-export async function runScript(flags: CliFlags & { scriptName?: string }): Promise<void> {
+async function executeScript(
+  network: ResolvedNetwork,
+  flags: CliFlags & { scriptName?: string }
+): Promise<void> {
   const scriptName = flags.scriptName ?? flags.script;
   if (!scriptName) {
     console.error(chalk.red('Script name required (e.g. Setup:setup)'));
     process.exit(1);
   }
 
-  const config = await loadConfig(flags);
-  const { network } = config;
   const token = await resolveToken(network);
 
   let darPath = flags.dar as string | undefined;
@@ -120,8 +106,16 @@ export async function runScript(flags: CliFlags & { scriptName?: string }): Prom
   } finally {
     try {
       fs.unlinkSync(tmpTokenFile);
-    } catch {
-      /* ignore */
-    }
+    } catch {}
   }
+}
+
+export async function runScript(
+  flags: CliFlags & { scriptName?: string },
+  options?: { network?: ResolvedNetwork; skipTunnel?: boolean }
+): Promise<void> {
+  if (options?.network && options.skipTunnel) {
+    return executeScript(options.network, flags);
+  }
+  return withNetworkSession(flags, (network) => executeScript(network, flags));
 }
