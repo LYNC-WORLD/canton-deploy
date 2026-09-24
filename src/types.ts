@@ -6,8 +6,37 @@ export interface ConfigUser {
   rights: UserRight[];
 }
 
+export type UploadVia = 'admin' | 'ledger';
+
+export interface OAuth2Config {
+  tokenUrl: string;
+  clientId: string;
+  clientSecretEnv: string;
+  audience: string;
+  scope?: string;
+}
+
+export interface SshForward {
+  localPort: number;
+  remoteHost: string;
+  remotePort: number;
+}
+
+export interface SshTunnelConfig {
+  host: string;
+  user: string;
+  port?: number;
+  identityFile?: string;
+  forwards: SshForward[];
+}
+
+export interface TunnelConfig {
+  ssh?: SshTunnelConfig;
+}
+
 export interface ResolvedNetwork {
   name: string;
+  uploadVia: UploadVia;
   host: string;
   adminPort: number;
   ledgerPort: number;
@@ -17,8 +46,10 @@ export interface ResolvedNetwork {
   adminGrpcAuthority?: string;
   httpUseTls: boolean;
   token?: string;
+  oauth2?: OAuth2Config;
   tokenFile?: string;
   tokenCommand?: string;
+  tunnel?: TunnelConfig;
   tls: boolean;
   tlsCertFile?: string;
   synchronizerId?: string;
@@ -44,6 +75,7 @@ export interface DarEntry {
 }
 
 export interface CliFlags {
+  uploadVia?: string;
   host?: string;
   adminPort?: number;
   ledgerPort?: number;

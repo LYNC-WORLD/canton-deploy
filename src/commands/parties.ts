@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import ora from 'ora';
-import type { CliFlags } from '../types.js';
-import { loadConfig } from '../config.js';
+import type { CliFlags, ResolvedNetwork } from '../types.js';
+import { withNetworkSession } from '../network-session.js';
 import { resolveToken } from '../auth/resolve.js';
 import { LedgerClient } from '../grpc/ledger.js';
 import { displayNameToHint } from '../utils/party-hint.js';
@@ -27,9 +27,7 @@ function printPartyTable(parties: { party: string; is_local: boolean }[]): void 
   console.log();
 }
 
-export async function runParties(flags: CliFlags): Promise<void> {
-  const config = await loadConfig(flags);
-  const { network } = config;
+async function executeParties(network: ResolvedNetwork, flags: CliFlags): Promise<void> {
   const token = await resolveToken(network);
   const client = new LedgerClient(network);
 
@@ -110,9 +108,10 @@ export async function runParties(flags: CliFlags): Promise<void> {
   }
 }
 
-export async function runAllocateParty(displayName: string, flags: CliFlags): Promise<void> {
-  const config = await loadConfig(flags);
-  const { network } = config;
+async function executeAllocateParty(
+  network: ResolvedNetwork,
+  displayName: string
+): Promise<void> {
   const token = await resolveToken(network);
   const client = new LedgerClient(network);
   const hint = displayNameToHint(displayName);
@@ -127,4 +126,12 @@ export async function runAllocateParty(displayName: string, flags: CliFlags): Pr
   } catch (err) {
     failSpinner(spinner, 'Party allocation failed', err);
   }
+}
+
+export async function runParties(flags: CliFlags): Promise<void> {
+  return withNetworkSession(flags, (network) => executeParties(network, flags));
+}
+
+export async function runAllocateParty(displayName: string, flags: CliFlags): Promise<void> {
+  return withNetworkSession(flags, (network) => executeAllocateParty(network, displayName));
 }

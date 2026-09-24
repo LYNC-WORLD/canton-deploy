@@ -7,11 +7,20 @@ const auth = loadSrc('src/auth/resolve.ts');
 const { generateLocalNetToken, LOCALNET_DEFAULT_USER_ID, LOCALNET_DEFAULT_SECRET } =
   loadSrc('src/auth/localnet.ts');
 
-test('tokenSourceKind order is token, tokenCommand, tokenFile, then localnet', () => {
+test('tokenSourceKind order is token, oauth2, tokenCommand, tokenFile, then localnet', () => {
   const { tokenSourceKind } = auth;
   assert.equal(
     tokenSourceKind({ name: 'devnet', token: 'eyJ', tokenCommand: 'echo x', tokenFile: 'f' }),
     'token'
+  );
+  assert.equal(
+    tokenSourceKind({
+      name: 'devnet',
+      oauth2: { tokenUrl: 'https://x/oauth/token', clientId: 'c', clientSecretEnv: 'S', audience: 'a' },
+      tokenCommand: 'echo jwt',
+      tokenFile: './.tokens/devnet.jwt',
+    }),
+    'oauth2'
   );
   assert.equal(
     tokenSourceKind({ name: 'devnet', tokenCommand: 'echo jwt', tokenFile: './.tokens/devnet.jwt' }),

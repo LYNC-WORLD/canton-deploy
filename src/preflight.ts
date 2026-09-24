@@ -11,11 +11,14 @@ export async function runPreflight(network: ResolvedNetwork, token: string): Pro
   const spinner = ora('Preflight connectivity check...').start();
   const errors: string[] = [];
   const warnings: string[] = [];
+  const adminRequired = network.uploadVia === 'admin';
 
   try {
     await withRetry(() => new AdminClient(network).getStatus(token));
   } catch (err) {
-    errors.push(`Admin API: ${formatGrpcError(err)}`);
+    const msg = `Admin API: ${formatGrpcError(err)}`;
+    if (adminRequired) errors.push(msg);
+    else warnings.push(`${msg} (not required for ledger upload)`);
   }
 
   try {
@@ -48,13 +51,13 @@ export async function runPreflight(network: ResolvedNetwork, token: string): Pro
   }
 
   if (warnings.length > 0) {
-    spinner.warn('Preflight OK for deploy (Admin + Ledger); JSON API unreachable');
+    spinner.warn('Preflight OK for deploy (Ledger reachable)');
     for (const w of warnings) {
       console.warn(chalk.yellow(`  ${w}`));
     }
     console.warn(
       chalk.gray(
-        '  Upload and party onboarding can proceed. Fix httpPort/httpHost/httpUseTls for `contracts` and full `status`.\n'
+        '  Upload can proceed. Fix optional endpoints for `dars`, `vet`, or full `status`.\n'
       )
     );
     return;

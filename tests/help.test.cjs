@@ -27,7 +27,16 @@ test('CLI registers every command', () => {
   }
 });
 
-test('CLI has no upload-via or call command', () => {
-  assert.doesNotMatch(src, /upload-via/i);
+test('deploy registers --upload-via', () => {
+  assert.match(src, /--upload-via/);
+});
+
+test('deploy registers --input-file for --script', () => {
+  const deployBlock = src.slice(src.indexOf(".command('deploy')"), src.indexOf(".command('vet')"));
+  assert.match(deployBlock, /--input-file <path>/);
+  assert.match(deployBlock, /scriptInputFile:\s*opts\.inputFile/);
+});
+
+test('CLI has no call command', () => {
   assert.doesNotMatch(src, /command\('call'/);
 });

@@ -1,14 +1,12 @@
 import chalk from 'chalk';
 import ora from 'ora';
-import type { CliFlags } from '../types.js';
-import { loadConfig } from '../config.js';
+import type { CliFlags, ResolvedNetwork } from '../types.js';
+import { withNetworkSession } from '../network-session.js';
 import { resolveToken } from '../auth/resolve.js';
 import { AdminClient } from '../grpc/admin.js';
 import { failSpinner } from '../utils/cli.js';
 
-export async function runDars(flags: CliFlags): Promise<void> {
-  const config = await loadConfig(flags);
-  const { network } = config;
+async function executeDars(network: ResolvedNetwork): Promise<void> {
   const token = await resolveToken(network);
   const client = new AdminClient(network);
 
@@ -49,4 +47,8 @@ export async function runDars(flags: CliFlags): Promise<void> {
   } catch (err) {
     failSpinner(spinner, 'Failed to list DARs', err);
   }
+}
+
+export async function runDars(flags: CliFlags): Promise<void> {
+  return withNetworkSession(flags, executeDars);
 }

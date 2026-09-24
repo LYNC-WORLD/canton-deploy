@@ -1,17 +1,16 @@
 import chalk from 'chalk';
 import ora from 'ora';
-import type { CliFlags } from '../types.js';
-import { loadConfig } from '../config.js';
+import type { CliFlags, ResolvedNetwork } from '../types.js';
+import { withNetworkSession } from '../network-session.js';
 import { resolveToken } from '../auth/resolve.js';
 import { AdminClient } from '../grpc/admin.js';
 import { failSpinner } from '../utils/cli.js';
 
-export async function runVetDar(
+async function executeVetDar(
+  network: ResolvedNetwork,
   mainPackageId: string,
   flags: CliFlags & { noSync?: boolean }
 ): Promise<void> {
-  const config = await loadConfig(flags);
-  const { network } = config;
   const token = await resolveToken(network);
   const client = new AdminClient(network);
 
@@ -30,4 +29,11 @@ export async function runVetDar(
   } catch (err) {
     failSpinner(spinner, 'VetDar failed', err);
   }
+}
+
+export async function runVetDar(
+  mainPackageId: string,
+  flags: CliFlags & { noSync?: boolean }
+): Promise<void> {
+  return withNetworkSession(flags, (network) => executeVetDar(network, mainPackageId, flags));
 }

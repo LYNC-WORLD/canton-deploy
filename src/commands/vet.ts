@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 import chalk from 'chalk';
 import ora from 'ora';
-import type { CliFlags } from '../types.js';
-import { loadConfig } from '../config.js';
+import type { CliFlags, ResolvedNetwork } from '../types.js';
+import { withNetworkSession } from '../network-session.js';
 import { resolveToken } from '../auth/resolve.js';
 import { runDpmBuild } from '../build.js';
 import { normalizeCliDars, resolveFullDarSet } from '../dar-set.js';
@@ -20,14 +20,16 @@ function matchDarToEntry(dars: DarInfo[], label: string): DarInfo | undefined {
   );
 }
 
-export async function runVet(flags: CliFlags): Promise<void> {
-  const config = await loadConfig(flags);
-  const { network } = config;
+async function executeVet(network: ResolvedNetwork, flags: CliFlags): Promise<void> {
   const token = await resolveToken(network);
   const cliDars = normalizeCliDars(flags.dar);
 
   console.log(chalk.bold('\n  canton-deploy vet'));
-  console.log(chalk.gray(`  Admin API: ${network.host}:${network.adminPort}\n`));
+  console.log(
+    chalk.gray(
+      `  Admin API: ${network.host}:${network.adminPort} (requires Admin; or use deploy --upload-via ledger --vet)\n`
+    )
+  );
 
   if (!flags.skipBuild) {
     await runDpmBuild();
@@ -81,4 +83,8 @@ export async function runVet(flags: CliFlags): Promise<void> {
   }
 
   console.log(chalk.green('\n  Vetting complete.\n'));
+}
+
+export async function runVet(flags: CliFlags): Promise<void> {
+  return withNetworkSession(flags, (network) => executeVet(network, flags));
 }

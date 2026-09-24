@@ -1,13 +1,11 @@
 import chalk from 'chalk';
-import type { CliFlags } from '../types.js';
-import { loadConfig } from '../config.js';
-import { resolveToken, decodeJwtPayload } from '../auth/resolve.js';
+import type { CliFlags, ResolvedNetwork } from '../types.js';
+import { withNetworkSession } from '../network-session.js';
+import { resolveToken, decodeJwtPayload, tokenSourceKind } from '../auth/resolve.js';
 
-export async function runToken(flags: CliFlags): Promise<void> {
-  const config = await loadConfig(flags);
-  const { network } = config;
-
+async function executeToken(network: ResolvedNetwork, flags: CliFlags): Promise<void> {
   const token = await resolveToken(network);
+  const source = tokenSourceKind(network);
 
   if (flags.show) {
     console.log(token);
@@ -33,17 +31,21 @@ export async function runToken(flags: CliFlags): Promise<void> {
       } else {
         const mins = Math.floor(remaining / 60);
         const hrs = Math.floor(mins / 60);
-        expiryStr = hrs > 0
-          ? chalk.green(`expires in ${hrs}h ${mins % 60}m`)
-          : chalk.green(`expires in ${mins}m`);
+        expiryStr =
+          hrs > 0
+            ? chalk.green(`expires in ${hrs}h ${mins % 60}m`)
+            : chalk.green(`expires in ${mins}m`);
       }
     }
 
     console.log(chalk.bold('\n  JWT Token Payload'));
     console.log(chalk.gray('  ─────────────────────────────────────'));
     console.log(`  ${chalk.gray('network:')} ${network.name}`);
+    console.log(`  ${chalk.gray('source:')} ${source}`);
     console.log(`  ${chalk.gray('sub:')} ${payload.sub ?? '(none)'}`);
-    console.log(`  ${chalk.gray('aud:')} ${Array.isArray(payload.aud) ? payload.aud.join(', ') : (payload.aud ?? '(none)')}`);
+    console.log(
+      `  ${chalk.gray('aud:')} ${Array.isArray(payload.aud) ? payload.aud.join(', ') : (payload.aud ?? '(none)')}`
+    );
     if (expSec) {
       console.log(`  ${chalk.gray('exp:')} ${new Date(expSec * 1000).toISOString()} — ${expiryStr}`);
     }
@@ -52,12 +54,16 @@ export async function runToken(flags: CliFlags): Promise<void> {
     return;
   }
 
-  const masked = token.length > 24
-    ? `${token.slice(0, 20)}...${token.slice(-4)}`
-    : token.slice(0, 10) + '...';
+  const masked =
+    token.length > 24 ? `${token.slice(0, 20)}...${token.slice(-4)}` : `${token.slice(0, 10)}...`;
 
   console.log(chalk.bold('\n  Resolved token'));
   console.log(chalk.gray('  ─────────────────────────────────────'));
+  console.log(`  ${chalk.gray('source:')} ${source}`);
   console.log(`  ${chalk.cyan(masked)}`);
   console.log(chalk.gray('\n  Use --decode to inspect payload, --show to print full token.\n'));
+}
+
+export async function runToken(flags: CliFlags): Promise<void> {
+  return withNetworkSession(flags, (network) => executeToken(network, flags));
 }

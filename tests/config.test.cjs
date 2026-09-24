@@ -15,6 +15,7 @@ const ENV_KEYS = [
   'CANTON_DEPLOY_ADMIN_PORT',
   'CANTON_DEPLOY_LEDGER_PORT',
   'CANTON_DEPLOY_HTTP_PORT',
+  'CANTON_DEPLOY_UPLOAD_VIA',
 ];
 
 function withEnv(fn) {
@@ -48,7 +49,42 @@ test('resolveVetOnUpload respects --vet / --no-vet over config', () => {
   assert.equal(resolveVetOnUpload(network, {}), false);
 });
 
-test('loadConfig defaults vetOnUpload on for localnet and off for other names', async () => {
+test('loadConfig defaults uploadVia to ledger', async () => {
+  await withEnv(async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cd-upload-'));
+    writeConfig(
+      tmp,
+      `module.exports = {
+        defaultNetwork: 'devnet',
+        networks: { devnet: { host: 'v.example.com', token: 't' } },
+      };`
+    );
+    process.chdir(tmp);
+    const cfg = await loadConfig({ network: 'devnet' });
+    assert.equal(cfg.network.uploadVia, 'ledger');
+  });
+});
+
+test('loadConfig respects CANTON_DEPLOY_UPLOAD_VIA and CLI override', async () => {
+  await withEnv(async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cd-upload-'));
+    writeConfig(
+      tmp,
+      `module.exports = {
+        defaultNetwork: 'devnet',
+        networks: { devnet: { host: 'v.example.com', token: 't', uploadVia: 'admin' } },
+      };`
+    );
+    process.chdir(tmp);
+    process.env.CANTON_DEPLOY_UPLOAD_VIA = 'ledger';
+    const envCfg = await loadConfig({ network: 'devnet' });
+    assert.equal(envCfg.network.uploadVia, 'ledger');
+    const cliCfg = await loadConfig({ network: 'devnet', uploadVia: 'admin' });
+    assert.equal(cliCfg.network.uploadVia, 'admin');
+  });
+});
+
+test('loadConfig defaults vetOnUpload on for localnet and off for testnet/mainnet names', async () => {
   await withEnv(async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cd-cfg-'));
     writeConfig(
@@ -58,6 +94,8 @@ test('loadConfig defaults vetOnUpload on for localnet and off for other names', 
         networks: {
           localnet: { host: 'localhost' },
           devnet: { host: 'validator.example.com', token: 't' },
+          testnet: { host: 'testnet.example.com', token: 't' },
+          mainnet: { host: 'mainnet.example.com', token: 't' },
         },
       };`
     );
@@ -66,6 +104,10 @@ test('loadConfig defaults vetOnUpload on for localnet and off for other names', 
     assert.equal(local.network.vetOnUpload, true);
     const dev = await loadConfig({ network: 'devnet' });
     assert.equal(dev.network.vetOnUpload, false);
+    const testnet = await loadConfig({ network: 'testnet' });
+    assert.equal(testnet.network.vetOnUpload, false);
+    const mainnet = await loadConfig({ network: 'mainnet' });
+    assert.equal(mainnet.network.vetOnUpload, false);
   });
 });
 
@@ -102,5 +144,46 @@ test('loadConfig precedence: CLI host over env over file', async () => {
     const fromCli = await loadConfig({ host: 'from-cli', token: 'cli-token' });
     assert.equal(fromCli.network.host, 'from-cli');
     assert.equal(fromCli.network.token, 'cli-token');
+  });
+});
+
+test('loadConfig parses oauth2 and tunnel.ssh forwards', async () => {
+  await withEnv(async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cd-oauth-tunnel-'));
+    writeConfig(
+      tmp,
+      `module.exports = {
+        defaultNetwork: 'devnet',
+        networks: {
+          devnet: {
+            host: '127.0.0.1',
+            ledgerPort: 5001,
+            httpPort: 7575,
+            grpcAuthority: 'grpc-ledger-api.localhost',
+            oauth2: {
+              tokenUrl: 'https://tenant.auth0.com/oauth/token',
+              clientId: 'cid',
+              clientSecretEnv: 'DEVNET_OAUTH_CLIENT_SECRET',
+              audience: 'https://ledger',
+            },
+            tunnel: {
+              ssh: {
+                host: 'remote.example.com',
+                user: 'ubuntu',
+                forwards: [
+                  { localPort: 5001, remoteHost: '127.0.0.1', remotePort: 80 },
+                  { localPort: 7575, remoteHost: '127.0.0.1', remotePort: 80 },
+                ],
+              },
+            },
+          },
+        },
+      };`
+    );
+    process.chdir(tmp);
+    const cfg = await loadConfig({ network: 'devnet' });
+    assert.equal(cfg.network.oauth2?.clientId, 'cid');
+    assert.equal(cfg.network.tunnel?.ssh?.forwards.length, 2);
+    assert.equal(cfg.network.tunnel?.ssh?.forwards[0].localPort, 5001);
   });
 });
