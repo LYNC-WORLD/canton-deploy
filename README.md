@@ -89,7 +89,7 @@ dpm canton-deploy --help
    dpm canton-deploy deploy --network localnet
    ```
 
-`init` asks whether to add a DevNet profile alongside LocalNet and whether to accept the defaults for each (LocalNet: `localhost`, Admin `5002`, Ledger `5001`, JSON API `7575`, no TLS, LocalNet HMAC token, parties `Alice`/`Bob`, user `ledger-api-user`). Answer No to any of them to enter your own values.
+`init` writes a LocalNet profile and asks whether to add DevNet, TestNet, and MainNet. LocalNet defaults: `localhost`, Admin `5002`, Ledger `5001`, JSON API `7575`, no TLS, LocalNet HMAC token, parties `Alice`/`Bob`, user `ledger-api-user`. Answer No to enter your own values.
 
 On LocalNet, canton-deploy can mint a development HMAC JWT (`unsafe` secret, user `ledger-api-user`). This is a development convenience for a local sandbox only. Other networks need an explicit JWT — see [Authentication](#authentication).
 
@@ -165,7 +165,7 @@ Vendored DARs go in `additionalDars` or `--dar`. `data-dependencies` are not upl
 
 **Upload paths:** `ledger` (default) works on managed validators where only Ledger/JSON API is exposed. `admin` uses Canton Admin `UploadDar` (operator tooling; needs `adminPort`). Commands `dars`, `vet`, and `vet-dar` always use the Admin API. On validators without Admin, vet during upload with `deploy --vet` on the ledger path.
 
-Upload path precedence: `--upload-via` → `CANTON_DEPLOY_UPLOAD_VIA` → `CANTON_PLUGIN_UPLOAD_VIA` → config `uploadVia` → `ledger`.
+Upload path precedence: `--upload-via` → `CANTON_DEPLOY_UPLOAD_VIA` → config `uploadVia` → `ledger`.
 
 ## Authentication
 
@@ -218,7 +218,7 @@ tunnel: {
 },
 ```
 
-Multiple forwards to the same remote `:80` are intentional: nginx routes by gRPC `:authority` and HTTP `Host`. See [examples/devnet-compose-remote](./examples/devnet-compose-remote).
+Multiple forwards to the same remote `:80` are intentional: nginx routes by gRPC `:authority` and HTTP `Host`.
 
 ## Commands
 
@@ -340,7 +340,7 @@ dpm canton-deploy contracts --network localnet --party 'Alice::1220...'
 dpm canton-deploy contracts --network localnet --party 'Alice::1220...' --template '#my-package:Module:Template'
 ```
 
-`--template` is `#<package-name>:Module:Template` from `daml.yaml`, not the hex package id from `deploy`. The JWT user needs `CanReadAs` for `--party`.
+`--template` is `#<package-name>:Module:Template` from `daml.yaml`, not the hex package id from `deploy`. Pass `--party` with a party the JWT can `CanReadAs`. Omitting it queries every party and returns HTTP 403 on shared validators.
 
 ### token
 
@@ -420,7 +420,6 @@ MainNet JWTs often come from `tokenCommand` (Vault or similar) in config — see
 | `CANTON_DEPLOY_HTTP_USE_TLS` | `true` / `false` |
 | `CANTON_DEPLOY_CONFIG` | Path to the config file |
 | `CANTON_DEPLOY_UPLOAD_VIA` | Default upload path (`admin` or `ledger`) |
-| `CANTON_PLUGIN_UPLOAD_VIA` | Alias for `CANTON_DEPLOY_UPLOAD_VIA` (proposal env name) |
 | `CANTON_DEPLOY_SCRIPT_USER_ID` | User id for `dpm script` |
 | `CANTON_DEPLOY_GRPC_DEADLINE_MS` | Per-RPC deadline (default `60000`) |
 | `CANTON_DEPLOY_GRPC_CONNECT_MS` | Channel ready wait (default `10000`) |
@@ -431,11 +430,7 @@ MainNet JWTs often come from `tokenCommand` (Vault or similar) in config — see
 
 **Every `dpm` command fails with `component "…" is currently not installed`, even `dpm --help`** — while any component listed in `daml.yaml` is not installed, DPM refuses all commands in that directory. Run `dpm install package`, or fix/remove the offending line.
 
-**Getting 401 on `dpm install`?** — check for `DPM_INSECURE_REGISTRY=true` in your shell configuration and `insecure: true` in `~/.dpm/dpm-config.yaml` 
-
-Run to fix:
-
-`DPM_INSECURE_REGISTRY=false dpm install package`
+**`dpm install package` → `403` on `europe-docker.pkg.dev` and/or `401` on `ghcr.io`** — usually `DPM_INSECURE_REGISTRY=true` (or `insecure: true` in `~/.dpm/dpm-config.yaml`). Run `DPM_INSECURE_REGISTRY=false dpm install package`.
 
 **`dpm canton-deploy` not found** — the component is not installed for this project. Add it under `components:` and run `dpm install package`.
 
@@ -452,6 +447,8 @@ Run to fix:
 **`PROTO_DESERIALIZATION_FAILURE` on upload** — `synchronizerId` must be logical (`namespace::fingerprint`). Drop a trailing `::NN-N` from `status`, or omit the field on a single-synchronizer participant.
 
 **`run` cannot reach `grpcAuthority`** — that name must resolve to the validator on `ledgerPort`, or set `host` and `grpcAuthority` to the same reachable name.
+
+**`contracts` returns HTTP 403** — pass `--party` with a party the JWT can `CanReadAs`. A query with no party is rejected on shared validators.
 
 **`contracts` returns `PACKAGE_NAMES_NOT_FOUND`** — use `#<package-name>:Module:Template` from `daml.yaml`, not a hex package id.
 
