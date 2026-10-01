@@ -408,6 +408,22 @@ dpm canton-deploy deploy --network mainnet --skip-build --no-vet
 
 MainNet JWTs often come from `tokenCommand` (Vault or similar) in config — see [canton-deploy.config.example.js](./canton-deploy.config.example.js).
 
+## Development
+
+Contributors who clone this repo can run unit tests offline and a LocalNet end-to-end suite against a real participant.
+
+```bash
+npm test
+```
+
+For the LocalNet end-to-end suite you need only `dpm` and Java (for Canton):
+
+```bash
+npm run test:e2e
+```
+
+The suite copies `tests/e2e/fixture` to a temp dir, installs this repo as the `canton-deploy` component via `path:` (plus `canton-open-source`), starts `dpm sandbox` on ports 5001/5002/7575, runs every non-interactive command, then stops the sandbox. If a sandbox is already running on those ports, it reuses it and leaves it running.
+
 ## Environment variables
 
 | Variable | Purpose |

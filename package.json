@@ -7,7 +7,8 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/*.test.cjs"
+    "test": "node --test tests/*.test.cjs",
+    "test:e2e": "npm run build && node --test --test-concurrency=1 --test-reporter=spec tests/e2e/*.e2e.cjs"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.12.0",

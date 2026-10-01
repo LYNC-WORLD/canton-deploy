@@ -1,0 +1,10 @@
+module Main where
+
+template Note
+  with
+    issuer : Party
+    owner : Party
+    text : Text
+  where
+    signatory issuer
+    observer owner
