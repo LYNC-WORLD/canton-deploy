@@ -1,0 +1,17 @@
+module Setup where
+
+import Daml.Script
+import qualified Main
+
+data Parties = Parties with
+    issuer : Party
+    owner : Party
+
+setup : Parties -> Script ()
+setup Parties{issuer, owner} = script do
+  _ <- submit issuer do
+    createCmd Main.Note with
+      issuer
+      owner
+      text = "e2e-fixture"
+  pure ()

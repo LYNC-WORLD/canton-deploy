@@ -1,0 +1,13 @@
+name: e2e-fixture
+source: daml
+version: 0.0.1
+dependencies:
+  - daml-prim
+  - daml-stdlib
+  - daml-script
+components:
+  - damlc:3.5.2
+  - daml-script:3.5.2
+  - canton-open-source:3.5.17
+  - name: canton-deploy
+    path: __REPO__

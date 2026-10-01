@@ -71,8 +71,8 @@ function networkFlags(opts: Record<string, unknown>): CliFlags {
 
 function withLogFile(run: (...args: any[]) => Promise<void>): (...args: any[]) => Promise<void> {
   return async (...args: any[]) => {
-    const opts = args[args.length - 1] as { logFile?: string };
-    installLogFile(opts?.logFile);
+    const cmd = args[args.length - 1] as Command;
+    installLogFile(cmd.opts().logFile);
     try {
       await run(...args);
     } catch (err) {
