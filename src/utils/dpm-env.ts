@@ -4,5 +4,6 @@ export function nestedDpmExecaOptions(): {
 } {
   const env = { ...process.env };
   delete env.DPM_RESOLUTION_FILE;
+  delete env.DPM_SDK_VERSION;
   return { env, extendEnv: false };
 }

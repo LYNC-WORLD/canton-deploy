@@ -2,6 +2,8 @@
 
 Deploy Daml packages to a Canton validator from your project: build, upload, vet, allocate parties, onboard users, run scripts, and inspect what is on the ledger.
 
+Built by [LYNC](https://lync.world) · Supported by the [Canton Foundation](https://canton.foundation/)
+
 Docs: [canton-deploy](https://docs.lync.world/docs/CANTON/deploy/canton-deploy)
 
 canton-deploy is a [DPM](https://docs.canton.network/sdks-tools/cli-tools/dpm) component. You invoke it as `dpm canton-deploy`.
@@ -473,3 +475,9 @@ The suite copies `tests/e2e/fixture` to a temp dir, installs this repo as the `c
 **Script fails with `Party already exists` on `allocatePartyByHint`** — the name is also in config `parties`, so `deploy` allocated it first. Look the party up in the script, or remove it from `parties`.
 
 **JSON API unreachable, Admin and Ledger OK** — upload can still succeed. Fix `httpPort` / `httpHost` / `httpUseTls` for `contracts` and a full `status`.
+
+## Acknowledgements
+
+canton-deploy is built and maintained by [LYNC](https://lync.world), with support from the [Canton Foundation](https://canton.foundation/).
+
+Licensed under [Apache 2.0](LICENSE).
