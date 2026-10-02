@@ -86,7 +86,14 @@ function withLogFile(run: (...args: any[]) => Promise<void>): (...args: any[]) =
 program
   .name('canton-deploy')
   .description('Deploy Daml packages to Canton validators (LocalNet, DevNet, TestNet, MainNet)')
-  .version(readCliVersion());
+  .version(readCliVersion())
+  .addHelpText(
+    'afterAll',
+    chalk.gray(
+      '\nBuilt by LYNC · Supported by the Canton Foundation Dev Fund\n' +
+        'Docs: https://docs.lync.world/docs/CANTON/deploy/canton-deploy'
+    )
+  );
 
 sharedNetworkOptions(
   program
