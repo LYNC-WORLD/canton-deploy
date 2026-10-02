@@ -478,6 +478,6 @@ The suite copies `tests/e2e/fixture` to a temp dir, installs this repo as the `c
 
 ## Acknowledgements
 
-canton-deploy is built and maintained by [LYNC](https://lync.world), with support from the [Canton Foundation Dev Fund](https://github.com/canton-foundation/canton-dev-fund).
+canton-deploy is built and maintained by [LYNC](https://lync.world), with support from the [Canton Foundation](https://canton.foundation/).
 
 Licensed under [Apache 2.0](LICENSE).
