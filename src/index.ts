@@ -90,7 +90,7 @@ program
   .addHelpText(
     'afterAll',
     chalk.gray(
-      '\nBuilt by LYNC · Supported by the Canton Foundation Dev Fund\n' +
+      '\nBuilt by LYNC · Supported by the Canton Foundation\n' +
         'Docs: https://docs.lync.world/docs/CANTON/deploy/canton-deploy'
     )
   );

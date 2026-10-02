@@ -376,8 +376,8 @@ async function promptDevNet(): Promise<string> {
 
 export async function runInit(): Promise<void> {
   console.log(chalk.bold('\n  canton-deploy init'));
-  console.log(chalk.gray('  Multi-network profiles; default upload path is ledger.'));
-  console.log(chalk.gray('  Built by LYNC · Supported by the Canton Foundation Dev Fund\n'));
+  console.log(chalk.gray('  Multi-network profiles, default upload path is ledger.'));
+  console.log(chalk.gray('  Built by LYNC · Supported by the Canton Foundation\n'));
 
   const configPath = path.join(process.cwd(), 'canton-deploy.config.js');
   if (fs.existsSync(configPath)) {
