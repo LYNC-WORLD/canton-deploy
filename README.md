@@ -9,7 +9,7 @@ Docs: [canton-deploy](https://docs.lync.world/docs/CANTON/deploy/canton-deploy)
 canton-deploy is a [DPM](https://docs.canton.network/sdks-tools/cli-tools/dpm) component. You invoke it as `dpm canton-deploy`.
 
 ```bash
-dpm add component oci://ghcr.io/lync-world/canton-deploy:0.2.1
+dpm add component oci://ghcr.io/lync-world/canton-deploy:0.2.2
 dpm install package
 dpm canton-deploy init
 dpm canton-deploy deploy --network localnet
@@ -45,7 +45,7 @@ Add the component to that file. DPM does not allow `sdk-version` and `components
 components:
   - damlc:3.5.2
   - daml-script:3.5.2
-  - oci://ghcr.io/lync-world/canton-deploy:0.2.1
+  - oci://ghcr.io/lync-world/canton-deploy:0.2.2
 ```
 
 Then install everything the project declares:
@@ -56,16 +56,16 @@ dpm install package
 
 `dpm install` in the same directory also installs listed components.
 
-On first install DPM pins the component by digest and rewrites the line in `daml.yaml` to `oci://ghcr.io/lync-world/canton-deploy:0.2.1@sha256:…`. That is expected; leave it in place.
+On first install DPM pins the component by digest and rewrites the line in `daml.yaml` to `oci://ghcr.io/lync-world/canton-deploy:0.2.2@sha256:…`. That is expected; leave it in place.
 
 You can add and pin the component in one step instead of editing `daml.yaml`:
 
 ```bash
-dpm add component oci://ghcr.io/lync-world/canton-deploy:0.2.1
+dpm add component oci://ghcr.io/lync-world/canton-deploy:0.2.2
 dpm install package
 ```
 
-`dpm add component` accepts `"<name>:<version>"`, `oci://<reference>`, or a local path object. For GHCR you must use the `oci://` form. The short form `canton-deploy:0.2.1` resolves against Digital Asset's component registry and will work once canton-deploy is published there. Do not pass a bare `ghcr.io/...` host, and do not paste a `@sha256:…` digest into `dpm add component` — let DPM pin the digest into `daml.yaml` on install.
+`dpm add component` accepts `"<name>:<version>"`, `oci://<reference>`, or a local path object. For GHCR you must use the `oci://` form. The short form `canton-deploy:0.2.2` resolves against Digital Asset's component registry and will work once canton-deploy is published there. Do not pass a bare `ghcr.io/...` host, and do not paste a `@sha256:…` digest into `dpm add component` — let DPM pin the digest into `daml.yaml` on install.
 
 Confirm it is on the CLI:
 
@@ -380,7 +380,7 @@ Pin the component by digest in CI so every run installs the same image. Use the 
 components:
   - damlc:3.5.2
   - daml-script:3.5.2
-  - oci://ghcr.io/lync-world/canton-deploy:0.2.1@sha256:<digest from your daml.yaml>
+  - oci://ghcr.io/lync-world/canton-deploy:0.2.2@sha256:<digest from your daml.yaml>
 ```
 
 ```bash
@@ -444,7 +444,7 @@ The suite copies `tests/e2e/fixture` to a temp dir, installs this repo as the `c
 
 ## Troubleshooting
 
-**`dpm install package` says `…/components/canton-deploy:0.2.1: not found`** — a bare `canton-deploy:0.2.1` resolves against Digital Asset's registry (`europe-docker.pkg.dev/da-images`). Use `oci://ghcr.io/lync-world/canton-deploy:0.2.1` until the component is published there.
+**`dpm install package` says `…/components/canton-deploy:0.2.2: not found`** — a bare `canton-deploy:0.2.2` resolves against Digital Asset's registry (`europe-docker.pkg.dev/da-images`). Use `oci://ghcr.io/lync-world/canton-deploy:0.2.2` until the component is published there.
 
 **Every `dpm` command fails with `component "…" is currently not installed`, even `dpm --help`** — while any component listed in `daml.yaml` is not installed, DPM refuses all commands in that directory. Run `dpm install package`, or fix/remove the offending line.
 
