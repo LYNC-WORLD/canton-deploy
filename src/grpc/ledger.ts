@@ -5,7 +5,7 @@ import { buildCredentials, buildMetadata, ledgerChannelOptions } from './channel
 import { grpcDeadline, waitForGrpcReady } from './deadline.js';
 import { unaryCall, promisifyUnary } from './unary.js';
 import { withRetry } from '../utils/retry.js';
-import { toLogicalSynchronizerId } from '../utils/synchronizer-id.js';
+import { logicalSynchronizerId } from '../utils/synchronizer-id.js';
 
 interface PartyManagementClient extends grpc.Client {
   ListKnownParties(
@@ -89,11 +89,13 @@ export class LedgerClient {
   private readonly address: string;
   private readonly creds: grpc.ChannelCredentials;
   private readonly channelOptions: grpc.ChannelOptions;
+  private readonly synchronizerId?: string;
 
   constructor(network: ResolvedNetwork) {
     this.address = `${network.host}:${network.ledgerPort}`;
     this.creds = buildCredentials(network);
     this.channelOptions = ledgerChannelOptions(network);
+    this.synchronizerId = network.synchronizerId;
   }
 
   private makePartyClient(): PartyManagementClient {
@@ -202,9 +204,12 @@ export class LedgerClient {
   }
 
   async allocateParty(hint: string, token: string): Promise<PartyDetails> {
+    const request: Record<string, unknown> = { party_id_hint: hint };
+    const synchronizerId = logicalSynchronizerId(this.synchronizerId);
+    if (synchronizerId) request.synchronizer_id = synchronizerId;
     return unaryCall(this.makePartyClient.bind(this), token, (client, meta, deadline) =>
       promisifyUnary(
-        (cb) => client.AllocateParty({ party_id_hint: hint }, meta, { deadline }, cb),
+        (cb) => client.AllocateParty(request, meta, { deadline }, cb),
         (r) => {
           const details = (r as { party_details?: PartyDetails }).party_details;
           if (!details) throw new Error('No party_details in AllocateParty response');
@@ -243,9 +248,8 @@ export class LedgerClient {
         ? 'VETTING_CHANGE_VET_ALL_PACKAGES'
         : 'VETTING_CHANGE_DONT_VET_ANY_PACKAGES',
     };
-    if (options.synchronizerId) {
-      request.synchronizer_id = toLogicalSynchronizerId(options.synchronizerId);
-    }
+    const synchronizerId = logicalSynchronizerId(options.synchronizerId);
+    if (synchronizerId) request.synchronizer_id = synchronizerId;
 
     return unaryCall(this.makePackageClient.bind(this), token, (client, meta, deadline) =>
       promisifyUnary((cb) => client.UploadDarFile(request, meta, { deadline }, cb), () => undefined)

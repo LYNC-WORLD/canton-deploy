@@ -3,7 +3,7 @@ import type { ResolvedNetwork } from '../types.js';
 import { loadAdminProto } from './proto-load.js';
 import { buildCredentials } from './channel.js';
 import { unaryCall, promisifyUnary } from './unary.js';
-import { toLogicalSynchronizerId } from '../utils/synchronizer-id.js';
+import { logicalSynchronizerId } from '../utils/synchronizer-id.js';
 
 interface PackageServiceClient extends grpc.Client {
   UploadDar(
@@ -98,9 +98,8 @@ export class AdminClient {
       vet_all_packages: vetAll,
       synchronize_vetting: syncVet,
     };
-    if (options?.synchronizerId) {
-      request.synchronizer_id = toLogicalSynchronizerId(options.synchronizerId);
-    }
+    const synchronizerId = logicalSynchronizerId(options?.synchronizerId);
+    if (synchronizerId) request.synchronizer_id = synchronizerId;
 
     return unaryCall(this.makePackageClient.bind(this), token, (client, meta, deadline) =>
       promisifyUnary((cb) => client.UploadDar(request, meta, { deadline }, cb), (r) => r as UploadDarResult)
@@ -116,9 +115,8 @@ export class AdminClient {
       main_package_id: mainPackageId,
       synchronize: options?.synchronize ?? true,
     };
-    if (options?.synchronizerId) {
-      request.synchronizer_id = toLogicalSynchronizerId(options.synchronizerId);
-    }
+    const synchronizerId = logicalSynchronizerId(options?.synchronizerId);
+    if (synchronizerId) request.synchronizer_id = synchronizerId;
 
     return unaryCall(this.makePackageClient.bind(this), token, (client, meta, deadline) =>
       promisifyUnary((cb) => client.VetDar(request, meta, { deadline }, cb), () => undefined)

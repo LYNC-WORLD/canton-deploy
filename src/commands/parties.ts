@@ -7,6 +7,7 @@ import { LedgerClient } from '../grpc/ledger.js';
 import { displayNameToHint } from '../utils/party-hint.js';
 import { resolveParty } from '../onboarding.js';
 import { failSpinner } from '../utils/cli.js';
+import { refuseUnsetSynchronizer } from '../synchronizer-guard.js';
 
 function printPartyTable(parties: { party: string; is_local: boolean }[]): void {
   if (parties.length === 0) {
@@ -113,6 +114,7 @@ async function executeAllocateParty(
   displayName: string
 ): Promise<void> {
   const token = await resolveToken(network);
+  await refuseUnsetSynchronizer(network, token);
   const client = new LedgerClient(network);
   const hint = displayNameToHint(displayName);
 

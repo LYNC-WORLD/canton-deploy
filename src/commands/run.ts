@@ -86,6 +86,16 @@ async function executeScript(
 
   if (network.tls) args.push('--tls');
 
+  if (network.synchronizerId?.trim()) {
+    console.log(
+      chalk.yellow(
+        '  synchronizerId is set, but dpm script has no synchronizer flag.\n' +
+          '  This script is submitted without one. On a participant connected to more\n' +
+          '  than one synchronizer, creates fail unless Canton can tell which one to use.\n'
+      )
+    );
+  }
+
   console.log(chalk.bold(`\n  canton-deploy run`));
   console.log(chalk.gray(`  Script: ${scriptName}`));
   console.log(

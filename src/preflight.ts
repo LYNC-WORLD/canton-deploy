@@ -6,6 +6,7 @@ import { LedgerClient } from './grpc/ledger.js';
 import { jsonApiDisplayUrl, jsonApiFetch } from './json-api.js';
 import { formatGrpcError } from './grpc/format-error.js';
 import { withRetry } from './utils/retry.js';
+import { refuseUnsetSynchronizer } from './synchronizer-guard.js';
 
 export async function runPreflight(network: ResolvedNetwork, token: string): Promise<void> {
   const spinner = ora('Preflight connectivity check...').start();
@@ -40,6 +41,10 @@ export async function runPreflight(network: ResolvedNetwork, token: string): Pro
     }
   } catch (err) {
     warnings.push(`JSON API: ${(err as Error).message}`);
+  }
+
+  if (errors.length === 0) {
+    await refuseUnsetSynchronizer(network, token);
   }
 
   if (errors.length > 0) {

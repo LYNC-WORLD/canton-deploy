@@ -5,6 +5,7 @@ import { withNetworkSession } from '../network-session.js';
 import { resolveToken } from '../auth/resolve.js';
 import { AdminClient } from '../grpc/admin.js';
 import { failSpinner } from '../utils/cli.js';
+import { refuseUnsetSynchronizer } from '../synchronizer-guard.js';
 
 async function executeVetDar(
   network: ResolvedNetwork,
@@ -12,6 +13,7 @@ async function executeVetDar(
   flags: CliFlags & { noSync?: boolean }
 ): Promise<void> {
   const token = await resolveToken(network);
+  await refuseUnsetSynchronizer(network, token);
   const client = new AdminClient(network);
 
   console.log(chalk.bold('\n  canton-deploy vet-dar'));

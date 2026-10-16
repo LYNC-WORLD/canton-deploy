@@ -19,6 +19,12 @@ export function formatGrpcError(err: unknown): string {
   if (e.code === grpc.status.DEADLINE_EXCEEDED) {
     return `Request timed out (gRPC). Check host/port reachability, or increase CANTON_DEPLOY_GRPC_DEADLINE_MS. ${msg}${hint}`;
   }
+  if (/PARTY_ALLOCATION_CANNOT_DETERMINE_SYNCHRONIZER/i.test(msg)) {
+    return (
+      `${msg}${hint}. Set synchronizerId in this network to one logical id from ` +
+      '`canton-deploy status`.'
+    );
+  }
   if (/PROTO_DESERIALIZATION_FAILURE/i.test(msg) && /synchronizer/i.test(String(e.metadata))) {
     return `${msg}${hint}. Tip: use logical synchronizerId (ns::fingerprint), not physical (…::35-3).`;
   }
