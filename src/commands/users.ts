@@ -5,6 +5,7 @@ import { withNetworkSession } from '../network-session.js';
 import { resolveToken } from '../auth/resolve.js';
 import { UserManagementGrpcClient } from '../grpc/user-management.js';
 import { ensureParties } from '../onboarding.js';
+import { refuseUnsetSynchronizer } from '../synchronizer-guard.js';
 import { failSpinner } from '../utils/cli.js';
 
 async function executeUsers(network: ResolvedNetwork): Promise<void> {
@@ -60,6 +61,7 @@ async function executeCreateUser(network: ResolvedNetwork, flags: CliFlags): Pro
   console.log(chalk.bold('\n  canton-deploy create-user'));
   console.log(chalk.gray(`  User: ${userId}\n`));
 
+  await refuseUnsetSynchronizer(network, token);
   const partyMap = await ensureParties(network, token, spec.parties);
   const partyIds = spec.parties.map((p) => partyMap.get(p) ?? p);
 

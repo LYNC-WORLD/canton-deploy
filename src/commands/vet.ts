@@ -8,6 +8,7 @@ import { runDpmBuild } from '../build.js';
 import { normalizeCliDars, resolveFullDarSet } from '../dar-set.js';
 import { AdminClient, type DarInfo } from '../grpc/admin.js';
 import { failSpinner } from '../utils/cli.js';
+import { refuseUnsetSynchronizer } from '../synchronizer-guard.js';
 
 function matchDarToEntry(dars: DarInfo[], label: string): DarInfo | undefined {
   const base = label.replace(/\.dar$/i, '');
@@ -22,6 +23,7 @@ function matchDarToEntry(dars: DarInfo[], label: string): DarInfo | undefined {
 
 async function executeVet(network: ResolvedNetwork, flags: CliFlags): Promise<void> {
   const token = await resolveToken(network);
+  await refuseUnsetSynchronizer(network, token);
   const cliDars = normalizeCliDars(flags.dar);
 
   console.log(chalk.bold('\n  canton-deploy vet'));

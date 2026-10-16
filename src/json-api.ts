@@ -1,7 +1,7 @@
 import * as http from 'http';
 import * as https from 'https';
 import type { ResolvedNetwork } from './types.js';
-import { toLogicalSynchronizerId } from './utils/synchronizer-id.js';
+import { logicalSynchronizerId } from './utils/synchronizer-id.js';
 
 export function jsonApiBaseUrl(network: ResolvedNetwork): string {
   const scheme = network.httpUseTls ? 'https' : 'http';
@@ -131,9 +131,8 @@ export async function jsonApiUploadDar(
 ): Promise<void> {
   const params = new URLSearchParams();
   params.set('vetAllPackages', String(options.vetOnUpload));
-  if (options.synchronizerId) {
-    params.set('synchronizerId', toLogicalSynchronizerId(options.synchronizerId));
-  }
+  const synchronizerId = logicalSynchronizerId(options.synchronizerId);
+  if (synchronizerId) params.set('synchronizerId', synchronizerId);
   const res = await jsonApiFetch(network, `/v2/dars?${params.toString()}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },

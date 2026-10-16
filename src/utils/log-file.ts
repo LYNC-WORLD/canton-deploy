@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import { stripVTControlCharacters } from 'util';
 
 let logStream: fs.WriteStream | null = null;
 const originals = {
@@ -13,7 +14,7 @@ function tee(level: 'log' | 'error' | 'warn', args: unknown[]): void {
   const line = args
     .map((a) => (typeof a === 'string' ? a : JSON.stringify(a)))
     .join(' ');
-  logStream.write(`[${level}] ${line}\n`);
+  logStream.write(`[${level}] ${stripVTControlCharacters(line)}\n`);
 }
 
 export function installLogFile(path: string | undefined): void {
